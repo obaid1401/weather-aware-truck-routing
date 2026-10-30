@@ -1,0 +1,202 @@
+# Claude Code Instructions
+
+## 1. Read Project Documentation
+
+Before starting implementation, read these files:
+
+1. `docs/requirements.md`
+2. `docs/architecture.md`
+
+Follow both documents throughout development.
+
+- `requirements.md` defines what the application must do.
+- `architecture.md` defines how the application must be structured and built.
+- This file defines how implementation should be carried out.
+
+Do not independently redesign the architecture or introduce new technologies.
+
+## 2. Implementation Rules
+
+- Implement only the requirements documented in the project.
+- Follow the approved architecture and folder structure.
+- Keep modules and components focused on their responsibilities.
+- Keep API views thin and business logic separate.
+- Avoid duplicated logic and unnecessary abstractions.
+- Use clear naming and type hints where appropriate.
+- Use TypeScript types instead of `any`.
+- Validate external API responses.
+- Handle errors and missing data explicitly.
+- Keep API credentials in environment variables.
+- Never expose API keys in frontend code.
+- Never commit `.env` files.
+- Do not fabricate routes, weather data, or analysis results.
+- Do not treat unknown weather as low risk.
+- Do not change business rules or route-ranking criteria.
+- Do not add a database, authentication, Redis, Celery, or other infrastructure unless explicitly approved.
+- Do not install unnecessary dependencies.
+
+## 3. Implementation Phases
+
+Implement the project phase by phase, in the following order.
+
+### Phase 1 — Backend Foundation
+
+- Initialize and configure Django.
+- Configure Django REST Framework.
+- Implement environment-based settings.
+- Set up the approved backend module structure.
+- Implement request serializers and validation.
+- Establish the API response and error formats.
+- Add the health endpoint.
+- Configure API documentation.
+
+**Completion criteria:** Backend starts successfully, request validation works, and the API contract is established.
+
+### Phase 2 — External API Integrations
+
+- Implement the OpenRouteService client.
+- Implement geocoding.
+- Implement heavy-vehicle routing using `driving-hgv`.
+- Request genuine alternative routes where supported.
+- Implement the Open-Meteo client.
+- Normalize provider responses.
+- Configure timeouts and error handling.
+- Handle rate limits and missing responses.
+
+**Completion criteria:** Both providers return normalized data, and provider failures are handled correctly. Never fabricate alternative routes.
+
+### Phase 3 — Route and Checkpoint Processing
+
+- Process route geometry.
+- Calculate cumulative route distances.
+- Generate checkpoints at 10, 25, and 50-mile intervals.
+- Interpolate checkpoint coordinates.
+- Calculate estimated checkpoint arrival times.
+- Handle final partial segments.
+
+**Completion criteria:** Checkpoints are positioned using actual route distance, and ETA calculations are tested.
+
+### Phase 4 — Weather Processing
+
+- Retrieve hourly forecasts for checkpoints.
+- Normalize wind, precipitation, and snowfall units.
+- Match forecasts to estimated checkpoint arrival times.
+- Store the forecast timestamp used.
+- Handle unavailable forecast hours.
+- Handle partial weather responses.
+
+**Completion criteria:** Weather values are correctly normalized and matched to checkpoint ETAs. Missing data remains `UNKNOWN`.
+
+### Phase 5 — Risk Calculation
+
+- Implement wind, rain, and snow thresholds.
+- Implement cargo-weight overrides.
+- Calculate individual weather risks.
+- Calculate final checkpoint risk.
+- Handle unknown values.
+- Aggregate route risk miles.
+- Calculate distance-weighted average risk.
+- Calculate weather coverage.
+
+**Completion criteria:** All business rules match `requirements.md`, including threshold boundaries and cargo-weight conditions. Add unit tests for each rule.
+
+### Phase 6 — Route Recommendation
+
+- Implement the required lexicographic ranking.
+- Compare severe-risk miles.
+- Compare high-risk miles.
+- Compare average risk.
+- Compare travel time.
+- Implement documented tie-breakers.
+- Generate recommendation explanations.
+- Generate no-travel and incomplete-data warnings.
+
+**Completion criteria:** Routes are ranked using the exact required criteria. Do not replace the ranking logic with an alternative weighted score.
+
+### Phase 7 — Backend Integration
+
+- Connect all backend services through the analysis orchestrator.
+- Implement `POST /api/v1/routes/analyze/`.
+- Return normalized trip, route, checkpoint, weather, risk, and recommendation data.
+- Handle provider failures and partial analysis results.
+- Add API integration tests.
+
+**Completion criteria:** A complete trip analysis works through one API request, and the response follows the documented API contract.
+
+### Phase 8 — Frontend Foundation
+
+- Initialize React with TypeScript and Vite.
+- Configure Material UI.
+- Implement the approved frontend structure.
+- Create the API client.
+- Define request and response types.
+- Build the trip input form.
+- Implement validation, loading, and error states.
+- Connect the form to the backend.
+
+**Completion criteria:** A user can submit a valid trip and receive the backend analysis.
+
+### Phase 9 — Results and Visualization
+
+- Implement route comparison components.
+- Display route metrics and recommendation explanations.
+- Implement the interactive Leaflet map.
+- Display origin and destination markers.
+- Display route alternatives.
+- Display risk-colored checkpoints.
+- Implement checkpoint details.
+- Implement the 0–48-hour forecast slider.
+- Display unavailable forecast data clearly.
+- Implement responsive layouts.
+
+**Completion criteria:** Users can inspect routes, checkpoints, risks, and forecast data. Changing the selected route, checkpoint, or forecast hour must not unnecessarily trigger another routing analysis.
+
+### Phase 10 — Testing and Delivery
+
+- Run backend unit and integration tests.
+- Run frontend tests.
+- Fix identified defects.
+- Run linting and production builds.
+- Configure deployment environment variables.
+- Deploy frontend and backend.
+- Test the complete hosted application.
+- Update the README with setup, environment, API, testing, and deployment instructions.
+- Document known limitations.
+- Prepare the 5–10-minute demonstration video.
+
+**Completion criteria:** The hosted application works, the main tests pass, documentation is complete, and the assessment can be demonstrated.
+
+## 4. Testing Requirements
+
+- Write unit tests for business logic.
+- Test threshold boundaries and cargo-weight conditions.
+- Test checkpoint distance and ETA calculations.
+- Test weather conversions and timestamp matching.
+- Test route aggregation and ranking.
+- Mock external API requests.
+- Test provider failures and incomplete data.
+- Test frontend form validation and forecast interactions.
+- Run relevant tests before completing each phase.
+
+Never claim a test passed unless it was actually executed.
+
+## 5. Phase Execution Rules
+
+- Work on only one phase at a time.
+- Do not start the next phase until the current phase is complete.
+- Do not implement future phases prematurely.
+- Inspect existing code before modifying files.
+- Do not overwrite working code without a reason.
+- Do not create unnecessary files or folders.
+- Do not make unrelated changes.
+- If an architectural change becomes necessary, explain why and request approval before implementing it.
+
+At the end of each phase, provide:
+
+1. Implementation summary.
+2. Files created or modified.
+3. Tests executed and their actual results.
+4. Remaining issues or limitations.
+5. Confirmation that the phase is ready for review.
+
+Wait for approval before proceeding to the next phase.
