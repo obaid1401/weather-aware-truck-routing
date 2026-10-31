@@ -6,10 +6,15 @@ these types and errors to HTTP responses.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 CHECKPOINT_INTERVAL_CHOICES_MILES: tuple[int, ...] = (10, 25, 50)
 DEFAULT_CHECKPOINT_INTERVAL_MILES = 25
+
+
+class Coordinate(NamedTuple):
+    latitude: float
+    longitude: float
 
 
 @dataclass(frozen=True)
@@ -26,6 +31,30 @@ class Location:
     label: str
     latitude: float
     longitude: float
+
+    @property
+    def coordinate(self) -> Coordinate:
+        return Coordinate(self.latitude, self.longitude)
+
+
+@dataclass(frozen=True)
+class RouteStep:
+    """A provider step covering `geometry[start_index : end_index + 1]` of its route."""
+
+    start_index: int
+    end_index: int
+    distance_miles: float
+    duration_seconds: float
+
+
+@dataclass(frozen=True)
+class Route:
+    id: str
+    label: str
+    geometry: tuple[Coordinate, ...]
+    distance_miles: float
+    duration_seconds: float
+    steps: tuple[RouteStep, ...]
 
 
 # Errors
@@ -68,6 +97,21 @@ class GeocodingAmbiguousError(AnalysisError):
                 ],
             },
         )
+
+
+class GeocodingNotFoundError(AnalysisError):
+    code = "GEOCODING_NOT_FOUND"
+
+    def __init__(self, field: str) -> None:
+        super().__init__(
+            message=f"No location was found for the {field} address.",
+            details={"field": field},
+        )
+
+
+class NoRouteFoundError(AnalysisError):
+    code = "ROUTE_NOT_FOUND"
+    default_message = "No truck route was found between the origin and destination."
 
 
 class ProviderError(AnalysisError):
