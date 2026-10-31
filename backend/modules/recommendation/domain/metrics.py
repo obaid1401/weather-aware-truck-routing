@@ -27,12 +27,14 @@ def route_metrics(route: Route, checkpoints: Sequence[Checkpoint]) -> RouteMetri
     _validate(route, checkpoints)
 
     miles = dict.fromkeys(RiskLevel, 0.0)
-    complete_miles = 0.0
+    complete_miles = incomplete_miles = 0.0
     for upstream, downstream in pairwise(checkpoints):
         segment = downstream.distance_from_origin_miles - upstream.distance_from_origin_miles
         miles[downstream.final_risk] += segment
         if downstream.data_status is DataStatus.AVAILABLE:
             complete_miles += segment
+        else:
+            incomplete_miles += segment
 
     known_miles = sum(miles[level] for level in SEVERITY_ORDER)
     total_miles = known_miles + miles[RiskLevel.UNKNOWN]
@@ -51,9 +53,28 @@ def route_metrics(route: Route, checkpoints: Sequence[Checkpoint]) -> RouteMetri
         no_travel_miles=miles[RiskLevel.NO_TRAVEL],
         unknown_miles=miles[RiskLevel.UNKNOWN],
         average_risk_score=average,
-        weather_coverage_percent=100 * known_miles / total_miles,
-        complete_weather_coverage_percent=100 * complete_miles / total_miles,
+        weather_coverage_percent=_coverage_percent(
+            total_miles, covered_miles=known_miles, missing_miles=miles[RiskLevel.UNKNOWN]
+        ),
+        complete_weather_coverage_percent=_coverage_percent(
+            total_miles, covered_miles=complete_miles, missing_miles=incomplete_miles
+        ),
     )
+
+
+def _coverage_percent(total_miles: float, covered_miles: float, missing_miles: float) -> float:
+    """Percentage of `total_miles` covered, exact at both ends.
+
+    The covered and total miles are summed in different orders, so dividing them directly
+    can give 99.99999999999999% for a fully covered route. Full and zero coverage are
+    therefore decided by whether any miles are missing or covered; partial coverage is
+    computed from the missing miles.
+    """
+    if missing_miles == 0:
+        return 100.0
+    if covered_miles == 0:
+        return 0.0
+    return min(100.0, max(0.0, 100 * (total_miles - missing_miles) / total_miles))
 
 
 def _validate(route: Route, checkpoints: Sequence[Checkpoint]) -> None:
