@@ -21,7 +21,8 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 - **Phase 4 (Weather Processing):** done. Forecasts matched to each checkpoint's arrival time, a 0–48-hour hourly series per checkpoint, shared locations fetched once, and missing data kept as unknown.
 - **Phase 5 (Risk Calculation):** done. Wind, rain, and snow risk with cargo-weight rules, final checkpoint and hourly risks, and route risk miles, distance-weighted average risk, and weather coverage.
 - **Phase 6 (Route Recommendation):** done. Lexicographic ranking (severe miles, high miles, average risk, travel time, then distance and provider order), explanations for every route, and NO_TRAVEL and incomplete-data warnings.
-- **Next:** Phase 7 (Backend Integration). The trip analysis endpoint and the frontend UI are not built yet.
+- **Phase 7 (Backend Integration):** done. `POST /api/v1/routes/analyze/` runs the full analysis in one request and returns routes, checkpoints, weather, risks, metrics, and the recommendation.
+- **Next:** Phase 8 (Frontend Foundation). The frontend UI is not built yet.
 
 ## Documentation
 
@@ -83,9 +84,22 @@ The backend runs at `http://127.0.0.1:8000/`.
 
 | URL | Purpose |
 |---|---|
+| `/api/v1/routes/analyze/` | Trip analysis (`POST`) |
 | `/api/health/` | Health check |
 | `/api/docs/` | Swagger UI |
 | `/api/schema/` | OpenAPI schema |
+
+Example request:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/routes/analyze/ \
+  -H "Content-Type: application/json" \
+  -d '{"origin": "Denver, CO", "destination": "Salt Lake City, UT",
+       "departure_time": "2026-11-05T08:00:00-07:00", "load_weight_lbs": 36000,
+       "checkpoint_interval_miles": 25}'
+```
+
+The departure time must include a UTC offset and must not be in the past. The full response shape is described in [`docs/architecture.md`](docs/architecture.md) (§12) and in Swagger UI.
 
 `requirements.txt` holds runtime dependencies only (used for deployment). `requirements-dev.txt` adds Pytest, pytest-django, pytest-cov, and Ruff.
 
@@ -113,6 +127,7 @@ Backend (`backend/.env`):
 | `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the API |
 | `ORS_API_KEY` | **Required.** OpenRouteService API key, used for geocoding; startup fails if missing |
 | `VALHALLA_BASE_URL` | Valhalla server for truck routing; defaults to `https://valhalla1.openstreetmap.de` |
+| `ANALYZE_RATE_LIMIT` | **Required.** Analysis requests allowed per client, such as `10/minute`; startup fails if missing or invalid. Excess requests get HTTP 429 |
 
 Frontend variables are defined in Phase 8.
 

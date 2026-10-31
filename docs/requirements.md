@@ -494,6 +494,7 @@ Return structured errors with these HTTP status codes:
 | 200 | Successful request |
 | 400 | Invalid request |
 | 422 | Ambiguous geocoding; address not found; no route found (including the routing server's distance limit) |
+| 429 | Too many analysis requests from one client (this API's own rate limit) |
 | 502 | Provider error |
 | 503 | Provider rate limit or temporary unavailability |
 | 504 | Provider timeout |
