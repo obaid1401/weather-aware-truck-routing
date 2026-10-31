@@ -57,6 +57,20 @@ class Route:
     steps: tuple[RouteStep, ...]
 
 
+@dataclass(frozen=True)
+class Checkpoint:
+    id: str
+    route_id: str
+    distance_from_origin_miles: float
+    latitude: float
+    longitude: float
+    estimated_arrival_time: datetime
+
+    @property
+    def coordinate(self) -> Coordinate:
+        return Coordinate(self.latitude, self.longitude)
+
+
 # Errors
 
 
