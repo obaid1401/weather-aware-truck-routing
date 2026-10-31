@@ -489,6 +489,7 @@ Do not use alphabetical string sorting to determine risk severity. Define an exp
 - unknown_miles
 - average_risk_score
 - weather_coverage_percent
+- complete_weather_coverage_percent
 
 ### Recommendation
 
@@ -606,6 +607,14 @@ The risk thresholds must exist in one source of truth.
 
 The frontend must not independently calculate risk.
 
+Implementation notes (`modules/risk/domain/`):
+
+- `thresholds.py` is the single source of truth for the FR-06 bands, the FR-07 cargo-weight rules, the severity order, and the risk scores. Boundaries are compared exactly. Provider values that convert exactly onto a boundary (for example 25.4 mm = 1.00 in, or 7.62 cm = 3.00 in) land on the documented side; tests cover this.
+- The most severe risk is chosen by explicit severity order, never by comparing the names.
+- Rain risk uses Open-Meteo's hourly `precipitation`, as FR-05 specifies. That total includes the water equivalent of snow, so heavy snowfall can also raise rain risk. This is a conservative reading.
+- Unknown wind stays `UNKNOWN` for every load, so cargo-weight limits are never assumed to be met. When some factors are unknown, the checkpoint gets an incomplete-data warning (which also says when cargo-weight wind limits could not be checked). When all are unknown, the warning says the risk is `UNKNOWN`.
+- Every hourly forecast entry is assessed with the same rules and the trip's cargo weight. Hourly risks never affect route metrics.
+
 ## 11. Route Aggregation and Recommendation
 
 Create a segment between each pair of consecutive checkpoints.
@@ -622,6 +631,16 @@ For average risk:
 4. Exclude unknown miles.
 5. Return `null` if there are no known-risk miles.
 6. Return weather coverage separately.
+
+Segment-risk approximation (`modules/recommendation/domain/metrics.py`):
+
+- Each segment's risk is the risk at the checkpoint where it ends: the conditions forecast for when the truck arrives there. Conditions between checkpoints are not sampled, so a shorter checkpoint interval gives a finer picture.
+- The origin checkpoint's risk covers no miles, because no segment ends at the origin.
+- Every route mile belongs to exactly one segment, so the six risk-mile totals add up to the route distance.
+- Two coverage figures use the same segments (downstream checkpoint, final partial segment included, each mile counted once):
+  - **Weather coverage** (`weather_coverage_percent`, risk coverage): the percentage of route miles whose segment has a known final risk. A checkpoint with partial data but a known final risk counts as covered; its incomplete-data warning flags the gap. It always equals 100% minus the unknown-risk share of the route.
+  - **Complete weather coverage** (`complete_weather_coverage_percent`): the percentage of route miles whose downstream checkpoint has all three weather values (`data_status` is `AVAILABLE`). Partial data does not count.
+  - Example: if wind is missing everywhere but rain and snow are LOW, risk is LOW on every mile and weather coverage is 100%, but complete weather coverage is 0%. Showing both stops incomplete data from being mistaken for a fully safe assessment (FR-10). Neither figure changes risk miles, the average, or ranking.
 
 Ranking must use a lexicographic comparator:
 
