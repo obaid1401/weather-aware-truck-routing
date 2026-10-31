@@ -2,4 +2,4 @@ from django.apps import AppConfig
 
 
 class RiskConfig(AppConfig):
-    name = 'risk'
+    name = "modules.risk"

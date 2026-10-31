@@ -14,6 +14,8 @@ jobs:
   backend:
     name: Backend checks
     runs-on: ubuntu-latest
+    env:
+      DJANGO_SECRET_KEY: ci-only-insecure-secret-key
 
     steps:
       - name: Checkout repository
@@ -28,11 +30,21 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        working-directory: backend
+        run: |
+          ruff check .
+          ruff format --check .
 
       - name: Check Django configuration
         working-directory: backend
         run: python manage.py check
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest
 
   frontend:
     name: Frontend build

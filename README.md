@@ -13,7 +13,10 @@ Given an origin, destination, departure time, and cargo weight, the application:
 
 ## Project Status
 
-The project is set up but not yet implemented. The backend and frontend contain framework scaffolding only. Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md); Phase 1 (Backend Foundation) is next.
+Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
+
+- **Phase 1 (Backend Foundation):** done. Environment-based settings, DRF, CORS, request validation, the error format, the health endpoint, and OpenAPI docs.
+- **Next:** Phase 2 (External API Integrations). The trip analysis endpoint and the frontend UI are not built yet.
 
 ## Documentation
 
@@ -64,12 +67,21 @@ cd backend
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+cp .env.example .env    # then edit the values
 python manage.py check
 python manage.py runserver
 ```
 
 The backend runs at `http://127.0.0.1:8000/`.
+
+| URL | Purpose |
+|---|---|
+| `/api/health/` | Health check |
+| `/api/docs/` | Swagger UI |
+| `/api/schema/` | OpenAPI schema |
+
+`requirements.txt` holds runtime dependencies only (used for deployment). `requirements-dev.txt` adds Pytest, pytest-django, pytest-cov, and Ruff.
 
 ### Frontend
 
@@ -83,11 +95,34 @@ The frontend runs at `http://localhost:5173/`.
 
 ## Environment Variables
 
-Secrets are kept in environment variables and never committed. Each app will have a `.env.example` listing its required variables; copy it to `.env` and fill in the values. The variables are defined during Phase 1 (backend) and Phase 8 (frontend).
+Secrets are kept in environment variables and never committed. Copy `.env.example` to `.env` and fill in the values.
+
+Backend (`backend/.env`):
+
+| Variable | Description |
+|---|---|
+| `DJANGO_SECRET_KEY` | Required when `DJANGO_DEBUG` is off |
+| `DJANGO_DEBUG` | `True` for local development only; defaults to `False` |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated host names |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the API |
+| `ORS_API_KEY` | OpenRouteService API key |
+
+Frontend variables are defined in Phase 8.
 
 ## Testing
 
-Backend tests (Pytest) and frontend tests (Vitest and React Testing Library) are added as each phase is implemented. CI currently runs `manage.py check` for the backend and a production build for the frontend on pushes and pull requests to `main`.
+Backend, from `backend/` with the virtual environment active:
+
+```bash
+pytest                 # run tests
+pytest --cov           # run tests with coverage
+ruff check .           # lint
+ruff format --check .  # check formatting
+```
+
+Tests never call live external APIs. Frontend tests (Vitest and React Testing Library) are added in Phase 8.
+
+CI runs Ruff, `manage.py check`, and Pytest for the backend, and a production build for the frontend, on pushes and pull requests to `main`.
 
 ## Deployment
 
