@@ -109,14 +109,24 @@ def test_missing_values_stay_none() -> None:
     assert forecast.hours[1].snowfall_inches_per_hour is None
 
 
-def test_large_location_lists_are_batched_in_order() -> None:
+def test_up_to_100_locations_are_fetched_in_one_request_in_order() -> None:
     recorder = Recorder(echo_locations)
-    coordinates = [Coordinate(30 + i * 0.01, -100.0) for i in range(150)]
+    coordinates = [Coordinate(30 + i * 0.01, -100.0) for i in range(100)]
 
     forecasts = service(recorder).get_hourly_forecasts(coordinates, START, START)
 
-    assert [len(r.url.params["latitude"].split(",")) for r in recorder.requests] == [100, 50]
+    assert [len(r.url.params["latitude"].split(",")) for r in recorder.requests] == [100]
     assert [f.coordinate for f in forecasts] == coordinates
+
+
+def test_more_than_100_locations_is_a_programming_error() -> None:
+    # Batching larger sets is the caller's job (CheckpointWeatherService).
+    recorder = Recorder(echo_locations)
+    coordinates = [Coordinate(30 + i * 0.01, -100.0) for i in range(101)]
+
+    with pytest.raises(ValueError):
+        service(recorder).get_hourly_forecasts(coordinates, START, START)
+    assert recorder.requests == []
 
 
 def test_window_is_cut_off_at_forecast_horizon() -> None:
@@ -198,3 +208,241 @@ def test_naive_or_reversed_windows_are_programming_errors() -> None:
 
 def test_uses_the_shared_configured_client_by_default() -> None:
     assert OpenMeteoForecastService()._client is get_http_client()
+
+
+# Provider response validation
+
+
+def with_times(times: list[Any], **overrides: Any) -> dict[str, Any]:
+    payload = location_payload(hours=len(times))
+    payload["hourly"]["time"] = times
+    payload.update(overrides)
+    return payload
+
+
+HOUR_0 = int(START.timestamp())
+
+
+def fetch(payload: Any, coordinates: list[Coordinate] | None = None) -> Any:
+    return service(lambda request: httpx.Response(200, json=payload)).get_hourly_forecasts(
+        coordinates or [DENVER], START, START
+    )
+
+
+@pytest.mark.parametrize(
+    "times",
+    [
+        [HOUR_0, HOUR_0],  # duplicate
+        [HOUR_0, HOUR_0 + 3600, HOUR_0 + 3600],  # duplicate later on
+        [HOUR_0 + 3600, HOUR_0],  # out of order
+        [HOUR_0, HOUR_0 + 900],  # not on a whole hour
+        [HOUR_0 + 0.5, HOUR_0 + 3600],  # fractional second
+        ["2026-11-01T08:00", "2026-11-01T09:00"],  # ISO strings, not unixtime
+        [None, HOUR_0],
+        [True, HOUR_0],
+    ],
+)
+def test_duplicate_or_invalid_timestamps_are_rejected(times: list[Any]) -> None:
+    with pytest.raises(ProviderError):
+        fetch(with_times(times))
+
+
+def test_valid_hourly_timestamps_are_accepted() -> None:
+    (forecast,) = fetch(with_times([HOUR_0, HOUR_0 + 3600, HOUR_0 + 7200]))
+
+    assert [h.timestamp for h in forecast.hours] == [START + timedelta(hours=h) for h in range(3)]
+    assert all(h.timestamp.tzinfo is UTC for h in forecast.hours)
+
+
+@pytest.mark.parametrize(
+    "location_ids",
+    [
+        [None, 1, 2],  # Open-Meteo omits the id on the first result
+        [0, 1, 2],
+    ],
+)
+def test_results_in_request_order_are_accepted(location_ids: list[int | None]) -> None:
+    payload = [location_payload(wind=[float(i)] * 2) for i in range(3)]
+    for location, location_id in zip(payload, location_ids, strict=True):
+        if location_id is not None:
+            location["location_id"] = location_id
+    coordinates = [DENVER, SALT_LAKE_CITY, Coordinate(40.0, -105.0)]
+
+    forecasts = fetch(payload, coordinates)
+
+    assert [f.coordinate for f in forecasts] == coordinates
+    assert [f.hours[0].wind_speed_mph for f in forecasts] == pytest.approx(
+        [0.0, 1 / 1.609344, 2 / 1.609344]
+    )
+
+
+@pytest.mark.parametrize(
+    "location_ids",
+    [
+        [None, 2, 1],  # results swapped
+        [1, 0, 2],
+        [None, 1, 1],
+        [None, True, 2],  # a boolean is not an id
+        [None, "1", 2],
+    ],
+)
+def test_results_out_of_request_order_are_rejected(location_ids: list[Any]) -> None:
+    payload = [location_payload() for _ in range(3)]
+    for location, location_id in zip(payload, location_ids, strict=True):
+        if location_id is not None:
+            location["location_id"] = location_id
+
+    with pytest.raises(ProviderError):
+        fetch(payload, [DENVER, SALT_LAKE_CITY, Coordinate(40.0, -105.0)])
+
+
+@pytest.mark.parametrize(
+    "units",
+    [
+        None,  # hourly_units missing entirely
+        {"time": "unixtime", "precipitation": "mm", "snowfall": "cm"},  # wind unit missing
+        {"time": "unixtime", "wind_speed_10m": "km/h", "snowfall": "cm"},
+        {"time": "unixtime", "wind_speed_10m": "km/h", "precipitation": "mm"},
+        {"wind_speed_10m": "km/h", "precipitation": "mm", "snowfall": "cm"},  # time missing
+        {**UNITS, "time": "iso8601"},
+        {**UNITS, "precipitation": "inch"},
+        {**UNITS, "snowfall": "inch"},
+        "km/h",
+    ],
+)
+def test_missing_or_unexpected_units_are_rejected(units: Any) -> None:
+    payload = location_payload()
+    if units is None:
+        del payload["hourly_units"]
+    else:
+        payload["hourly_units"] = units
+
+    with pytest.raises(ProviderError):
+        fetch(payload)
+
+
+# Provider forecast range shorter than our computed horizon
+
+END = START + timedelta(hours=48)  # 2026-11-03 08:00 UTC, within our computed horizon
+
+
+def range_error(last_day: str = "2026-11-02", parameter: str = "end_hour") -> httpx.Response:
+    return httpx.Response(
+        400,
+        json={
+            "error": True,
+            "reason": f"Parameter '{parameter}' is out of allowed range from 2026-07-30 "
+            f"to {last_day}",
+        },
+    )
+
+
+def hours_until(end_hour: str) -> dict[str, Any]:
+    """A payload with every hour from START through `end_hour` (inclusive)."""
+    last = datetime.strptime(end_hour, "%Y-%m-%dT%H:%M").replace(tzinfo=UTC)
+    count = int((last - START) / timedelta(hours=1)) + 1
+    return location_payload(hours=count)
+
+
+class Responses:
+    """Returns the given responses in order and records each request."""
+
+    def __init__(self, *responses: Callable[[httpx.Request], httpx.Response]) -> None:
+        self.responses = list(responses)
+        self.requests: list[httpx.Request] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        return self.responses.pop(0)(request)
+
+
+def test_out_of_range_end_is_retried_once_within_the_providers_range() -> None:
+    handler = Responses(
+        lambda request: range_error("2026-11-02"),
+        lambda request: httpx.Response(200, json=hours_until(request.url.params["end_hour"])),
+    )
+
+    (forecast,) = service(handler).get_hourly_forecasts([DENVER], START, END)
+
+    first, retry = handler.requests
+    assert first.url.params["end_hour"] == "2026-11-03T08:00"
+    assert retry.url.params["end_hour"] == "2026-11-02T23:00"
+    assert retry.url.params["start_hour"] == first.url.params["start_hour"] == "2026-11-01T08:00"
+    # Every available hour is kept: 08:00 on Nov 1 through 23:00 on Nov 2.
+    assert len(forecast.hours) == 40
+    assert forecast.hours[-1].timestamp == datetime(2026, 11, 2, 23, 0, tzinfo=UTC)
+    assert all(h.wind_speed_mph == pytest.approx(10.0) for h in forecast.hours)
+
+
+def test_hours_beyond_the_providers_range_are_absent_not_zero() -> None:
+    handler = Responses(
+        lambda request: range_error("2026-11-02"),
+        lambda request: httpx.Response(200, json=hours_until(request.url.params["end_hour"])),
+    )
+
+    (forecast,) = service(handler).get_hourly_forecasts([DENVER], START, END)
+
+    timestamps = {h.timestamp for h in forecast.hours}
+    assert datetime(2026, 11, 3, 0, 0, tzinfo=UTC) not in timestamps
+    assert datetime(2026, 11, 3, 8, 0, tzinfo=UTC) not in timestamps
+
+
+def test_window_entirely_beyond_the_providers_range_returns_no_hours() -> None:
+    handler = Responses(lambda request: range_error("2026-10-31", parameter="start_hour"))
+
+    (forecast,) = service(handler).get_hourly_forecasts([DENVER], START, END)
+
+    assert forecast.hours == ()
+    assert len(handler.requests) == 1
+
+
+def test_a_second_failure_is_not_retried_again() -> None:
+    handler = Responses(
+        lambda request: range_error("2026-11-02"),
+        lambda request: range_error("2026-11-01"),
+    )
+
+    with pytest.raises(ProviderError):
+        service(handler).get_hourly_forecasts([DENVER], START, END)
+    assert len(handler.requests) == 2
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(400, json={"error": True, "reason": "Cannot initialize WeatherVariable"}),
+        httpx.Response(
+            400, json={"error": True, "reason": "Latitude must be in range of -90 to 90°"}
+        ),
+        httpx.Response(400, text="Bad Request"),
+    ],
+)
+def test_unrelated_bad_requests_are_not_retried(response: httpx.Response) -> None:
+    handler = Responses(lambda request: response)
+
+    with pytest.raises(ProviderError) as error:
+        service(handler).get_hourly_forecasts([DENVER], START, END)
+
+    assert len(handler.requests) == 1
+    assert error.value.message == "Open-Meteo returned an error (HTTP 400)."
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "Parameter 'end_hour' is out of allowed range",  # no dates
+        "Parameter 'end_hour' is out of allowed range from 2026-07-30 to 2026-13-45",  # bad date
+        "Parameter 'end_hour' is out of allowed range from 2026-07-30 to 15/11/2026",
+        "Parameter 'end_hour' is out of allowed range from 2026-07-30 to 2026-11-16",  # not earlier
+        None,
+        ["out of allowed range"],
+    ],
+)
+def test_unparseable_or_unhelpful_range_errors_keep_the_existing_behavior(reason: Any) -> None:
+    handler = Responses(lambda request: httpx.Response(400, json={"error": True, "reason": reason}))
+
+    with pytest.raises(ProviderError) as error:
+        service(handler).get_hourly_forecasts([DENVER], START, END)
+
+    assert len(handler.requests) == 1
+    assert error.value.message == "Open-Meteo returned an error (HTTP 400)."

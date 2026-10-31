@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -161,3 +162,20 @@ def test_checkpoint_coordinate() -> None:
     checkpoint = generate_checkpoints(equator_route(0.0, 1.0), 25, DEPARTURE)[1]
 
     assert checkpoint.coordinate == Coordinate(checkpoint.latitude, checkpoint.longitude)
+
+
+def test_checkpoint_etas_across_a_dst_change_use_real_elapsed_time() -> None:
+    denver = ZoneInfo("America/Denver")
+    departure = datetime(2026, 10, 31, 20, 0, tzinfo=denver)  # DST ends during the trip
+    route = equator_route(0.0, 1.0, 2.0, duration_seconds=20 * 3600.0)
+
+    checkpoints = generate_checkpoints(route, 25, departure)
+
+    for cp in checkpoints:
+        elapsed = cp.estimated_arrival_time.astimezone(UTC) - departure.astimezone(UTC)
+        expected = 20 * 3600 * cp.distance_from_origin_miles / route.distance_miles
+        assert elapsed.total_seconds() == pytest.approx(expected)
+        assert cp.estimated_arrival_time.tzinfo is denver
+    destination = checkpoints[-1].estimated_arrival_time
+    assert destination.astimezone(UTC) == departure.astimezone(UTC) + timedelta(hours=20)
+    assert destination.utcoffset() == timedelta(hours=-7)  # MST after the change
