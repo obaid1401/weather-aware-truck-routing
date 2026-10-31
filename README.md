@@ -17,7 +17,8 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 
 - **Phase 1 (Backend Foundation):** done. Environment-based settings, DRF, CORS, request validation, the error format, the health endpoint, and OpenAPI docs.
 - **Phase 2 (External API Integrations):** done. ORS geocoding, Valhalla truck routing, and Open-Meteo hourly forecasts.
-- **Next:** Phase 3 (Route and Checkpoint Processing). The trip analysis endpoint and the frontend UI are not built yet.
+- **Phase 3 (Route and Checkpoint Processing):** done. Checkpoints at mile 0, every 10/25/50 miles along the route geometry, and at the destination, with step-based arrival time estimates.
+- **Next:** Phase 4 (Weather Processing). The trip analysis endpoint and the frontend UI are not built yet.
 
 ## Documentation
 
