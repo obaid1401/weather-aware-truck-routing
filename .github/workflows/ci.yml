@@ -18,6 +18,7 @@ jobs:
       # Dummy values so Django can start. Tests never call live APIs, so no real key is needed.
       DJANGO_SECRET_KEY: ci-only-insecure-secret-key
       ORS_API_KEY: ci-only-dummy-ors-key
+      ANALYZE_RATE_LIMIT: 10/minute
 
     steps:
       - name: Checkout repository

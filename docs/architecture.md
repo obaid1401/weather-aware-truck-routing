@@ -564,6 +564,7 @@ Implementation notes (`modules/weather/services/`):
 - One fetch per location covers both ETA matching and the 0–48-hour series: from departure to the later of departure + 48 hours and the last checkpoint ETA.
 - Locations are fetched in sequential batches of up to 100. Open-Meteo counts each location as one call (600 per minute on the free tier), and concurrent batches were measured to be no faster. After a rate-limit error, the remaining batches are skipped.
 - Partial failures: if some batches fail, their checkpoints are `UNAVAILABLE` and a warning is returned. If every batch fails, the provider error is raised (HTTP 502, 503, or 504) and no analysis is returned.
+- Forecast range: when checkpoint ETAs (or, failing that, forecast-slider hours) fall after the last hour Open-Meteo forecasts, a warning states the forecast end time and how many checkpoints are affected. Those values are `UNKNOWN` because no forecast exists yet. This is reported as a range limit, never as a provider failure.
 
 ### Hourly Forecast Series
 
@@ -733,6 +734,7 @@ HTTP status codes:
 | 200 | Successful request |
 | 400 | Invalid request |
 | 422 | Ambiguous geocoding (`GEOCODING_AMBIGUOUS`); address not found (`GEOCODING_NOT_FOUND`); no route found (`ROUTE_NOT_FOUND`, `ROUTE_DISTANCE_LIMIT`) |
+| 429 | Too many analysis requests from one client (`RATE_LIMITED`, with a `Retry-After` header) |
 | 502 | Provider error |
 | 503 | Provider rate limit or temporary unavailability |
 | 504 | Provider timeout |
@@ -740,6 +742,21 @@ HTTP status codes:
 Generate OpenAPI documentation.
 
 Keep frontend TypeScript types aligned with the backend contract.
+
+Implementation notes (`api/serializers/analysis.py`, `api/views/analyze.py`):
+
+- The view validates the request, calls `AnalyzeTripUseCase.execute()`, and serializes the result. Errors from any step are mapped to the status table above by the existing exception handler.
+- Successful response (`200`), top-level fields:
+  - `trip`: the validated request.
+  - `origin`, `destination`: geocoded locations (label, latitude, longitude).
+  - `forecast_window`: `start` (departure) and `end` (departure + 48 hours).
+  - `routes`: in provider order. Each has `id`, `label`, `distance_miles`, `duration_seconds`, `estimated_arrival_time`, `checkpoint_count`, `geometry` (`[latitude, longitude]` pairs), `metrics` (`RouteMetrics`), and `checkpoints`. Each checkpoint carries its ETA-matched weather, factor and final risks, `data_status`, `warnings`, and 49 `hourly_forecasts`.
+  - `recommendation`: `recommended_route_id`, `ranked_route_ids`, `ranking_reasons` (one per ranked route, same order), and `warnings`, the safety warnings (NO_TRAVEL exposure, incomplete weather data).
+  - `provider_warnings`: provider limitations, such as fewer routes than requested or weather that could not be retrieved.
+- All timestamps are ISO-8601 in UTC (`Z`), except `trip.departure_time`, which echoes the request with the UTC offset the client sent. Missing weather values are `null`, never `0`. Risk and data-status values use the `RiskLevelEnum` and `DataStatusEnum` schema components.
+- The orchestrator sends every route's checkpoints to the weather service in one list and recovers each route's checkpoints by position, not by route id. The weather service must return them in the same order and number.
+- Each request builds a lightweight use case, but all provider services share the single process-wide HTTP client (`shared/http.py`), so connections are reused and no client is created per request.
+- Rate limit: the analysis endpoint (only) uses DRF's `ScopedRateThrottle`, per client IP, at `ANALYZE_RATE_LIMIT`, which is required from the environment (for example `10/minute` in `.env`), with no built-in value. Every analysis uses shared provider quotas. The counters live in Django's default in-process cache, so each server process counts separately; behind a proxy, DRF's `NUM_PROXIES` must be set so the client IP is read correctly.
 
 ## 13. Frontend Architecture
 

@@ -92,7 +92,7 @@ class OpenMeteoForecastService:
             raise ValueError(f"at most {MAX_LOCATIONS_PER_REQUEST} coordinates per request")
 
         first_hour = _floor_hour(start)
-        last_hour = min(_ceil_hour(end), self._horizon_end())
+        last_hour = min(_ceil_hour(end), self.forecast_horizon_end())
         if not coordinates or first_hour > last_hour:
             return _no_hours(coordinates)
 
@@ -113,7 +113,8 @@ class OpenMeteoForecastService:
             response = self._request(coordinates, first_hour, allowed_end)
         return self._parse(response, coordinates)
 
-    def _horizon_end(self) -> datetime:
+    def forecast_horizon_end(self) -> datetime:
+        """The last hour (UTC) the provider is expected to forecast."""
         today = self._clock().astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         return today + timedelta(days=FORECAST_HORIZON_DAYS) - HOUR
 

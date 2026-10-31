@@ -6,11 +6,12 @@ Every error response has the shape:
 """
 
 import logging
+import math
 from typing import Any
 
 from django.http import Http404
 from rest_framework import status
-from rest_framework.exceptions import APIException, NotFound, ValidationError
+from rest_framework.exceptions import APIException, NotFound, Throttled, ValidationError
 from rest_framework.response import Response
 
 from shared.types import (
@@ -37,10 +38,17 @@ ANALYSIS_ERROR_STATUS: dict[type[AnalysisError], int] = {
 }
 
 
-def error_response(code: str, message: str, details: dict[str, Any], status_code: int) -> Response:
+def error_response(
+    code: str,
+    message: str,
+    details: dict[str, Any],
+    status_code: int,
+    headers: dict[str, str] | None = None,
+) -> Response:
     return Response(
         {"error": {"code": code, "message": message, "details": details}},
         status=status_code,
+        headers=headers,
     )
 
 
@@ -60,6 +68,22 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
             "The request is invalid.",
             details,
             status.HTTP_400_BAD_REQUEST,
+        )
+
+    if isinstance(exc, Throttled):
+        # This API's own rate limit (HTTP 429), not a provider's.
+        details: dict[str, Any] = {}
+        headers = None
+        if exc.wait is not None:
+            seconds = math.ceil(exc.wait)
+            details["retry_after_seconds"] = seconds
+            headers = {"Retry-After": str(seconds)}
+        return error_response(
+            "RATE_LIMITED",
+            "Too many analysis requests. Try again later.",
+            details,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            headers,
         )
 
     if isinstance(exc, APIException):

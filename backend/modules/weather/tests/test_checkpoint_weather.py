@@ -63,10 +63,15 @@ class StubForecasts:
         self,
         hours: Callable[[Coordinate], tuple[ForecastHour, ...]] = lambda c: full_hours(),
         errors: dict[int, Exception] | None = None,
+        horizon_end: datetime = datetime(2100, 1, 1, tzinfo=UTC),
     ) -> None:
         self.hours = hours
         self.errors = errors or {}
+        self.horizon_end = horizon_end
         self.calls: list[tuple[list[Coordinate], datetime, datetime]] = []
+
+    def forecast_horizon_end(self) -> datetime:
+        return self.horizon_end
 
     def get_hourly_forecasts(
         self, coordinates: Sequence[Coordinate], start: datetime, end: datetime
@@ -531,3 +536,88 @@ def test_provider_range_shorter_than_expected_keeps_earlier_hours_and_marks_late
     )
     assert cp.data_status == DataStatus.UNAVAILABLE  # its ETA is beyond the provider's range
     assert cp.wind_speed_mph is None
+
+
+# Forecast horizon warnings (a range limit, not a provider failure)
+
+
+def test_checkpoints_after_the_forecast_horizon_get_a_range_warning() -> None:
+    # Forecast exists for 10 hours after departure (UTC 15:00 + 10 h = 01:00 next day).
+    horizon = utc_hour(10)
+    stub = StubForecasts(hours=lambda c: full_hours(last=10), horizon_end=horizon)
+    cps = [
+        checkpoint(eta=DEPARTURE + timedelta(hours=2)),
+        checkpoint(BOULDER, eta=DEPARTURE + timedelta(hours=12), number=1),
+        checkpoint(Coordinate(41.0, -106.0), eta=DEPARTURE + timedelta(hours=20), number=2),
+    ]
+
+    result = apply(cps, stub)[0]
+
+    assert result.warnings == (
+        "Weather forecasts are only available until 2026-11-06 01:00 UTC (about 16 days "
+        "ahead). 2 of 3 checkpoints are reached after that, so their weather and risk are "
+        "UNKNOWN.",
+    )
+    assert [cp.data_status for cp in result.checkpoints] == [
+        DataStatus.AVAILABLE,
+        DataStatus.UNAVAILABLE,
+        DataStatus.UNAVAILABLE,
+    ]
+    assert result.checkpoints[1].wind_speed_mph is None  # unknown, never zero
+
+
+def test_only_slider_hours_after_the_horizon_get_a_slider_warning() -> None:
+    horizon = utc_hour(30)  # every ETA is covered; slider hours 31-48 are not
+    stub = StubForecasts(hours=lambda c: full_hours(last=30), horizon_end=horizon)
+
+    result = apply([checkpoint(eta=DEPARTURE + timedelta(hours=3))], stub)[0]
+
+    assert result.warnings == (
+        "Weather forecasts are only available until 2026-11-06 21:00 UTC. Forecast slider "
+        "hours after that are UNKNOWN.",
+    )
+    series = result.checkpoints[0].hourly_forecasts
+    assert series[30].data_status == DataStatus.AVAILABLE
+    assert {e.data_status for e in series[31:]} == {DataStatus.UNAVAILABLE}
+
+
+def test_departure_entirely_beyond_the_horizon_warns_without_a_provider_failure() -> None:
+    stub = StubForecasts(hours=lambda c: (), horizon_end=DEPARTURE - timedelta(days=4))
+
+    result = apply([checkpoint(), checkpoint(BOULDER, number=1)], stub)[0]
+
+    (warning,) = result.warnings
+    assert "2 of 2 checkpoints are reached after that" in warning
+    assert "could not be retrieved" not in warning  # not reported as a provider failure
+
+
+def test_no_horizon_warning_when_everything_is_within_range() -> None:
+    result = apply([checkpoint(eta=DEPARTURE + timedelta(hours=5))])[0]
+
+    assert result.warnings == ()
+
+
+def test_a_gap_inside_the_horizon_is_not_reported_as_a_range_limit() -> None:
+    hours = tuple(h for h in full_hours() if h.timestamp != utc_hour(2))
+    stub = StubForecasts(hours=lambda c: hours)
+
+    result = apply([checkpoint(eta=DEPARTURE + timedelta(hours=2))], stub)[0]
+
+    assert result.checkpoints[0].data_status == DataStatus.UNAVAILABLE
+    assert result.warnings == ()
+
+
+def test_provider_failure_and_horizon_warnings_are_both_reported() -> None:
+    stub = StubForecasts(
+        errors={2: ProviderError("Open-Meteo returned an invalid response.")},
+        horizon_end=utc_hour(1),
+    )
+    cps = [
+        checkpoint(Coordinate(30 + i * 0.01, -100.0), eta=DEPARTURE + timedelta(hours=3), number=i)
+        for i in range(150)
+    ]
+
+    warnings = apply(cps, stub)[0].warnings
+
+    assert warnings[0].startswith("Weather forecasts could not be retrieved for 50 of 150")
+    assert warnings[1].startswith("Weather forecasts are only available until")

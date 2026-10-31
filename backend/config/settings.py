@@ -9,6 +9,7 @@ The application is stateless: no database, models, admin, authentication, or ses
 """
 
 import os
+import re
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -114,7 +115,24 @@ STATIC_URL = "static/"
 
 # Django REST Framework
 
+
+def env_rate(name: str) -> str:
+    """A required DRF throttle rate such as "10/minute" (periods: second, minute, hour, day)."""
+    value = env_required(name)
+    if not re.fullmatch(r"[1-9]\d*/[smhd][a-z]*", value):
+        raise ImproperlyConfigured(
+            f"{name} must be a rate such as 10/minute or 100/hour, got {value!r}."
+        )
+    return value
+
+
+# Each analysis calls ORS, Valhalla, and Open-Meteo (dozens of location calls), all with
+# shared free-tier limits, so the analysis endpoint is rate-limited per client. The rate
+# comes from the environment (.env); there is no built-in value.
+ANALYZE_RATE_LIMIT = env_rate("ANALYZE_RATE_LIMIT")
+
 REST_FRAMEWORK = {
+    "DEFAULT_THROTTLE_RATES": {"analyze": ANALYZE_RATE_LIMIT},
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     "DEFAULT_AUTHENTICATION_CLASSES": [],
@@ -129,6 +147,14 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Compares heavy-vehicle routes by distance, travel time, weather, and cargo.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # One schema name for each shared enum used by several response fields.
+    "ENUM_NAME_OVERRIDES": {
+        "RiskLevelEnum": "shared.types.RiskLevel",
+        "DataStatusEnum": "shared.types.DataStatus",
+    },
+    # Swagger UI's syntax highlighter crashes the browser on large responses (a full trip
+    # analysis is over 1 MB), so responses are shown as plain text.
+    "SWAGGER_UI_SETTINGS": {"syntaxHighlight": False},
 }
 
 

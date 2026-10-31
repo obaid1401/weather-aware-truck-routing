@@ -18,7 +18,11 @@ LOAD_SETTINGS = (
     "import django; django.setup(); from django.conf import settings; "
     "print(settings.SECRET_KEY, settings.ORS_API_KEY, settings.VALHALLA_BASE_URL, sep='|')"
 )
-VALID = {"DJANGO_SECRET_KEY": "test-secret-key", "ORS_API_KEY": "test-ors-key"}
+VALID = {
+    "DJANGO_SECRET_KEY": "test-secret-key",
+    "ORS_API_KEY": "test-ors-key",
+    "ANALYZE_RATE_LIMIT": "10/minute",
+}
 
 
 def start_django(**overrides: str) -> subprocess.CompletedProcess[str]:
@@ -61,3 +65,50 @@ def test_error_message_says_how_to_fix_it() -> None:
     result = start_django(ORS_API_KEY="")
 
     assert "Add it to backend/.env (see .env.example) or to the environment." in result.stderr
+
+
+# Analysis rate limit (non-secret; has a default)
+
+LOAD_RATE = (
+    "import os; os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings'; "
+    "import django; django.setup(); from django.conf import settings; "
+    "print(settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analyze'])"
+)
+
+
+def load_rate(**overrides: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-c", LOAD_RATE],
+        cwd=BACKEND_DIR,
+        env={**os.environ, **VALID, **overrides},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_missing_rate_limit_fails_at_startup(value: str) -> None:
+    # There is no built-in rate; it must come from .env or the environment.
+    result = load_rate(ANALYZE_RATE_LIMIT=value)
+
+    assert result.returncode != 0
+    assert "ImproperlyConfigured: ANALYZE_RATE_LIMIT is not set." in result.stderr
+
+
+@pytest.mark.parametrize("rate", ["3/second", "30/minute", "500/hour", "2000/day", "5/m"])
+def test_rate_limit_is_configurable(rate: str) -> None:
+    result = load_rate(ANALYZE_RATE_LIMIT=rate)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == rate
+
+
+@pytest.mark.parametrize(
+    "rate", ["ten/minute", "10", "10/week", "0/minute", "-1/minute", "10 /min"]
+)
+def test_invalid_rate_limit_fails_at_startup(rate: str) -> None:
+    result = load_rate(ANALYZE_RATE_LIMIT=rate)
+
+    assert result.returncode != 0
+    assert "ANALYZE_RATE_LIMIT must be a rate such as 10/minute or 100/hour" in result.stderr
