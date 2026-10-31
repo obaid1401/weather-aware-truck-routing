@@ -4,7 +4,7 @@ A web application that helps truck drivers and dispatchers compare heavy-vehicle
 
 Given an origin, destination, departure time, and cargo weight, the application:
 
-1. Retrieves up to three genuine heavy-vehicle routes from OpenRouteService (`driving-hgv`).
+1. Geocodes the addresses with OpenRouteService and retrieves up to three genuine truck routes from Valhalla (`truck` costing).
 2. Places weather checkpoints along each route at 10, 25, or 50-mile intervals.
 3. Estimates when the truck reaches each checkpoint and matches it to an Open-Meteo hourly forecast.
 4. Rates wind, rain, and snow risk at each checkpoint, including cargo-weight rules for high wind.
@@ -16,7 +16,8 @@ Given an origin, destination, departure time, and cargo weight, the application:
 Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 
 - **Phase 1 (Backend Foundation):** done. Environment-based settings, DRF, CORS, request validation, the error format, the health endpoint, and OpenAPI docs.
-- **Next:** Phase 2 (External API Integrations). The trip analysis endpoint and the frontend UI are not built yet.
+- **Phase 2 (External API Integrations):** done. ORS geocoding, Valhalla truck routing, and Open-Meteo hourly forecasts.
+- **Next:** Phase 3 (Route and Checkpoint Processing). The trip analysis endpoint and the frontend UI are not built yet.
 
 ## Documentation
 
@@ -32,7 +33,8 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 |---|---|
 | Frontend | React, TypeScript, Vite, Material UI, React Leaflet, TanStack Query, Axios |
 | Backend | Python 3.12, Django, Django REST Framework, HTTPX, drf-spectacular |
-| Routing and geocoding | OpenRouteService |
+| Geocoding | OpenRouteService |
+| Truck routing | Valhalla |
 | Weather | Open-Meteo |
 | Map tiles | OpenStreetMap |
 | Backend testing | Pytest, pytest-django |
@@ -58,7 +60,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full target structure
 
 - Python 3.12
 - Node.js 24 and npm
-- A free OpenRouteService API key (needed once the provider integrations are implemented)
+- A free OpenRouteService API key (for geocoding). Valhalla's public server needs no key.
 
 ### Backend
 
@@ -105,7 +107,8 @@ Backend (`backend/.env`):
 | `DJANGO_DEBUG` | `True` for local development only; defaults to `False` |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated host names |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the API |
-| `ORS_API_KEY` | OpenRouteService API key |
+| `ORS_API_KEY` | OpenRouteService API key, used for geocoding |
+| `VALHALLA_BASE_URL` | Valhalla server for truck routing; defaults to `https://valhalla1.openstreetmap.de` |
 
 Frontend variables are defined in Phase 8.
 
@@ -130,6 +133,7 @@ Deployment instructions will be added in Phase 10. The frontend and backend will
 
 ## External Service Terms
 
-- **OpenRouteService:** free tier with daily and per-minute request limits.
+- **OpenRouteService:** free tier with daily and per-minute request limits. Used for geocoding only.
+- **Valhalla (FOSSGIS public server):** free, no API key, fair-use policy. Truck routes are limited to 1,500 km; longer trips are rejected.
 - **Open-Meteo:** the free API is for non-commercial use.
 - **OpenStreetMap:** tiles are used under the OSM tile usage policy, with attribution shown on the map.

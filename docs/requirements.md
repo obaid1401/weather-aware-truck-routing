@@ -39,7 +39,7 @@ Use the following services:
 | UI components | Material UI |
 | Backend | Python, Django, Django REST Framework |
 | HTTP requests | HTTPX |
-| Routing | OpenRouteService |
+| Routing | Valhalla (`truck` costing) |
 | Geocoding | OpenRouteService |
 | Weather | Open-Meteo |
 | Interactive map | React Leaflet |
@@ -53,12 +53,16 @@ Use the following services:
 All external services must be usable without payment for the assessment within their applicable free usage limits.
 
 **OpenRouteService**
-- Use its geocoding service.
-- Use the `driving-hgv` profile for heavy-vehicle routing.
-- Use alternative routing where supported.
-- Respect its free request limits and routing restrictions.
+- Use its geocoding service only.
+- Respect its free request limits.
 
-Important: ORS alternative routing has documented distance restrictions. Verify that it can return multiple genuine alternatives for representative routes before committing to the implementation. If fewer routes are returned, display only those routes. Never fabricate or duplicate alternatives.
+**Valhalla**
+- Use Valhalla for heavy-vehicle routing with the `truck` costing model.
+- Request up to two alternates (three routes in total).
+- Use the public FOSSGIS server (`valhalla1.openstreetmap.de`) initially, and follow its usage policy. The server is configurable.
+- Do not pass cargo weight to Valhalla; cargo-weight rules are applied by the risk logic.
+
+Important: Valhalla may return fewer than three routes. If fewer routes are returned, display only those routes. Never fabricate or duplicate alternatives. The public server limits truck routes to 1,500 km; longer trips are rejected.
 
 **Open-Meteo**
 - Use hourly weather forecasts.
@@ -158,8 +162,8 @@ For every checkpoint, store:
 ### FR-03: Route Generation
 
 - Geocode the origin and destination using ORS.
-- Use the `driving-hgv` profile.
-- Request up to three alternatives where supported.
+- Route with Valhalla using the `truck` costing model.
+- Request up to three routes (the primary route and up to two alternates).
 - Normalize route geometry, distance, and duration.
 - Validate returned route data.
 - Assign stable application route IDs.
@@ -169,7 +173,10 @@ Geocoding results:
 
 - If an address returns no usable result, stop the analysis and return a geocoding error.
 - If an address is ambiguous, stop the analysis and return an error that includes the candidate locations (label, latitude, longitude). Do not silently choose one.
-- An address is ambiguous when the provider returns multiple plausible, materially different candidates with similar confidence scores. The numerical confidence threshold is not yet defined; it will be set after verifying the provider's actual behavior in Phase 2.
+- An address is ambiguous when the provider returns multiple plausible, materially different candidates with similar confidence scores. Approved thresholds:
+  - A candidate is plausible when its confidence is within 0.1 of the best confidence.
+  - Plausible candidates are materially different when they are more than 25 miles apart.
+  - Only plausible candidates can be selected. When there is no ambiguity, the first plausible candidate in provider order is used.
 
 Never create fake alternatives.
 
@@ -486,7 +493,7 @@ Return structured errors with these HTTP status codes:
 |---|---|
 | 200 | Successful request |
 | 400 | Invalid request |
-| 422 | Ambiguous geocoding |
+| 422 | Ambiguous geocoding; address not found; no route found (including the routing server's distance limit) |
 | 502 | Provider error |
 | 503 | Provider rate limit or temporary unavailability |
 | 504 | Provider timeout |

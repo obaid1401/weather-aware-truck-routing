@@ -61,11 +61,10 @@ Implement the project phase by phase, in the following order.
 
 ### Phase 2 — External API Integrations
 
-- Implement the OpenRouteService client.
-- Implement geocoding, returning candidate locations when a result is ambiguous.
-- Verify ORS geocoding behavior and propose a numerical ambiguity threshold for approval before relying on it.
-- Implement heavy-vehicle routing using `driving-hgv`.
-- Request genuine alternative routes where supported.
+- Implement OpenRouteService geocoding, returning candidate locations when a result is ambiguous.
+- Apply the approved ambiguity thresholds (confidence within 0.1, more than 25 miles apart); only plausible candidates can be selected.
+- Implement heavy-vehicle routing with Valhalla using `truck` costing.
+- Request up to two genuine alternate routes.
 - Implement the Open-Meteo client.
 - Normalize provider responses.
 - Configure timeouts and error handling.
