@@ -149,6 +149,17 @@ class RouteMetrics:
     complete_weather_coverage_percent: float
 
 
+@dataclass(frozen=True)
+class Recommendation:
+    """Route ranking (FR-10). `ranking_reasons[i]` explains the route at
+    `ranked_route_ids[i]`; the first entry explains why the recommended route was chosen."""
+
+    recommended_route_id: str
+    ranked_route_ids: tuple[str, ...]
+    ranking_reasons: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
 # Errors
 
 

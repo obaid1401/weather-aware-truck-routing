@@ -20,7 +20,8 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 - **Phase 3 (Route and Checkpoint Processing):** done. Checkpoints at mile 0, every 10/25/50 miles along the route geometry, and at the destination, with step-based arrival time estimates.
 - **Phase 4 (Weather Processing):** done. Forecasts matched to each checkpoint's arrival time, a 0–48-hour hourly series per checkpoint, shared locations fetched once, and missing data kept as unknown.
 - **Phase 5 (Risk Calculation):** done. Wind, rain, and snow risk with cargo-weight rules, final checkpoint and hourly risks, and route risk miles, distance-weighted average risk, and weather coverage.
-- **Next:** Phase 6 (Route Recommendation). The trip analysis endpoint and the frontend UI are not built yet.
+- **Phase 6 (Route Recommendation):** done. Lexicographic ranking (severe miles, high miles, average risk, travel time, then distance and provider order), explanations for every route, and NO_TRAVEL and incomplete-data warnings.
+- **Next:** Phase 7 (Backend Integration). The trip analysis endpoint and the frontend UI are not built yet.
 
 ## Documentation
 
@@ -106,11 +107,11 @@ Backend (`backend/.env`):
 
 | Variable | Description |
 |---|---|
-| `DJANGO_SECRET_KEY` | Required when `DJANGO_DEBUG` is off |
+| `DJANGO_SECRET_KEY` | **Required** in every environment; startup fails if missing |
 | `DJANGO_DEBUG` | `True` for local development only; defaults to `False` |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated host names |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the API |
-| `ORS_API_KEY` | OpenRouteService API key, used for geocoding |
+| `ORS_API_KEY` | **Required.** OpenRouteService API key, used for geocoding; startup fails if missing |
 | `VALHALLA_BASE_URL` | Valhalla server for truck routing; defaults to `https://valhalla1.openstreetmap.de` |
 
 Frontend variables are defined in Phase 8.

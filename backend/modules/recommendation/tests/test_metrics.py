@@ -1,9 +1,11 @@
+import random
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
 
 from modules.recommendation.domain.metrics import route_metrics
+from modules.recommendation.domain.ranking import recommend
 from shared.types import Checkpoint, Coordinate, DataStatus, RiskLevel, Route
 
 LOW, MODERATE, HIGH, SEVERE, NO_TRAVEL, UNKNOWN = (
@@ -236,3 +238,78 @@ def test_complete_coverage_does_not_change_risk_figures() -> None:
         assert getattr(partial, field) == getattr(baseline, field)
     assert baseline.complete_weather_coverage_percent == pytest.approx(75.0)
     assert partial.complete_weather_coverage_percent == pytest.approx(100 * 10 / 80)
+
+
+# Coverage is exact at 100% and 0% (floating-point summation order)
+
+
+def uneven_routes(count: int, seed: int = 1) -> list[tuple[Route, list[tuple[float, RiskLevel]]]]:
+    """Routes with uneven segment lengths and mixed known risks. Many of these produced a
+    coverage of 99.99999999999999% before the fix."""
+    rng = random.Random(seed)
+    routes = []
+    for _ in range(count):
+        distances = [0.0]
+        for _ in range(rng.randint(3, 25)):
+            distances.append(distances[-1] + rng.choice([10, 25, 50]) + rng.random())
+        stops = [(d, rng.choice([LOW, MODERATE, HIGH, SEVERE, NO_TRAVEL])) for d in distances]
+        routes.append((route(distances[-1]), stops))
+    return routes
+
+
+def test_full_weather_on_uneven_segments_is_exactly_100_percent() -> None:
+    for full_route, stops in uneven_routes(500):
+        metrics = route_metrics(full_route, checkpoints(stops))
+
+        assert metrics.weather_coverage_percent == 100.0
+        assert metrics.complete_weather_coverage_percent == 100.0
+        assert metrics.unknown_miles == 0
+
+
+def test_full_weather_on_uneven_segments_gives_no_incomplete_data_warning() -> None:
+    for full_route, stops in uneven_routes(200, seed=7):
+        metrics = route_metrics(full_route, checkpoints(stops))
+
+        recommendation = recommend([full_route], {full_route.id: metrics})
+
+        assert not any("Incomplete weather data" in w for w in recommendation.warnings)  # type: ignore[union-attr]
+
+
+def test_no_weather_on_uneven_segments_is_exactly_0_percent() -> None:
+    _, stops = uneven_routes(1, seed=3)[0]
+    distances = [d for d, _ in stops]
+    no_data = [(d, UNKNOWN, UNAVAILABLE) for d in distances]
+    partial = [(d, LOW, PARTIAL) for d in distances]
+
+    unknown = route_metrics(route(distances[-1]), checkpoints(no_data))
+    known_but_partial = route_metrics(route(distances[-1]), checkpoints(partial))
+
+    assert (unknown.weather_coverage_percent, unknown.complete_weather_coverage_percent) == (0, 0)
+    assert unknown.average_risk_score is None
+    assert known_but_partial.weather_coverage_percent == 100.0
+    assert known_but_partial.complete_weather_coverage_percent == 0.0
+
+
+def test_partial_and_unavailable_data_on_uneven_segments() -> None:
+    # Segments: 12.3 (complete), 7.9 (partial, known risk), 20.45 (no data), 5.35 (complete).
+    cps = checkpoints(
+        [
+            (0, LOW, AVAILABLE),
+            (12.3, LOW, AVAILABLE),
+            (20.2, MODERATE, PARTIAL),
+            (40.65, UNKNOWN, UNAVAILABLE),
+            (46.0, HIGH, AVAILABLE),
+        ]
+    )
+
+    metrics = route_metrics(route(46.0), cps)
+
+    assert metrics.unknown_miles == pytest.approx(20.45)
+    assert metrics.weather_coverage_percent == pytest.approx(100 * (46.0 - 20.45) / 46.0)
+    assert metrics.complete_weather_coverage_percent == pytest.approx(100 * (12.3 + 5.35) / 46.0)
+    assert 0 < metrics.complete_weather_coverage_percent < metrics.weather_coverage_percent < 100
+    # Risk mileage and the average are unaffected by the coverage calculation.
+    assert (metrics.low_miles, metrics.moderate_miles, metrics.high_miles) == pytest.approx(
+        (12.3, 7.9, 5.35)
+    )
+    assert metrics.average_risk_score == pytest.approx((1 * 12.3 + 2 * 7.9 + 3 * 5.35) / 25.55)

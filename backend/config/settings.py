@@ -3,6 +3,7 @@ Django settings for the Weather-Aware Truck Routing backend.
 
 All configuration comes from environment variables. For local development, copy
 `.env.example` to `.env`; variables already set in the environment take precedence.
+Required variables have no fallback: startup fails with a clear error if one is missing.
 
 The application is stateless: no database, models, admin, authentication, or sessions.
 """
@@ -11,7 +12,6 @@ import os
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
-from django.core.management.utils import get_random_secret_key
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,16 +34,21 @@ def env_list(name: str) -> list[str]:
     return [item.strip() for item in os.environ.get(name, "").split(",") if item.strip()]
 
 
+def env_required(name: str) -> str:
+    """The value of a required variable; blank values count as missing."""
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise ImproperlyConfigured(
+            f"{name} is not set. Add it to backend/.env (see .env.example) or to the environment."
+        )
+    return value
+
+
 # Core
 
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
-if not SECRET_KEY:
-    if not DEBUG:
-        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is off.")
-    # Development only. A per-process key is acceptable because nothing is signed or persisted.
-    SECRET_KEY = get_random_secret_key()
+SECRET_KEY = env_required("DJANGO_SECRET_KEY")
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
 
@@ -136,7 +141,7 @@ CORS_URLS_REGEX = r"^/api/.*$"
 # External providers
 
 # OpenRouteService is used for geocoding only.
-ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
+ORS_API_KEY = env_required("ORS_API_KEY")
 
 # Valhalla is used for truck routing. The public FOSSGIS server is subject to its usage policy.
 VALHALLA_BASE_URL = os.environ.get("VALHALLA_BASE_URL", "https://valhalla1.openstreetmap.de")

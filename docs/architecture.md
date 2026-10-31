@@ -663,6 +663,19 @@ After the required criteria, use:
 
 Do not add no-travel miles as an undocumented primary ranking criterion. Display them prominently as a safety warning.
 
+Implementation notes (`modules/recommendation/domain/ranking.py`):
+
+- The sort key is `(severe_miles, high_miles, average, duration_seconds, distance_miles, provider_position)`, compared left to right; values are compared exactly.
+- **Unknown average policy:** a route with no known-risk miles has no average risk score. At the average-risk step it ranks below every route with a known average. Two routes with unknown averages tie at that step and fall through to travel time. Earlier criteria (severe and high miles) still apply first.
+- `recommend()` returns no recommendation (`None`) when there are no routes.
+- `ranking_reasons` has one entry per ranked route, in rank order. The first explains why the recommended route was chosen. Each later entry explains why that route ranks below the one directly above it, naming the first criterion that separated them, with both values. When values look equal at normal precision, more precision is shown.
+- Warnings, in this order:
+  1. One per route with NO_TRAVEL miles, naming whether it is the recommended route.
+  2. "No route is free of NO_TRAVEL conditions" when every route has them (or a single-route equivalent).
+  3. Incomplete weather data per route: unknown-risk miles with weather coverage, or otherwise partial weather values with complete weather coverage.
+  4. When no route has any known risk, a warning that the recommendation is based on travel time and distance only.
+- Displayed coverage is rounded down, so incomplete coverage never appears as 100%. A non-zero NO_TRAVEL distance below 0.05 mi is shown as "<0.1 mi", never 0.0.
+
 ## 12. API Design
 
 Primary endpoint:
