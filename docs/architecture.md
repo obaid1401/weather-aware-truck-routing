@@ -11,7 +11,8 @@ The project will have:
 - Clearly separated backend modules.
 - Feature-based frontend organization.
 - No microservices.
-- No database for the initial assessment implementation.
+- A stateless backend: no database, models, migrations, Django admin, authentication, or sessions.
+- No Docker or container configuration.
 
 The main objective is to keep the code organized, testable, and easy to extend without introducing unnecessary complexity.
 
@@ -75,7 +76,8 @@ All external API credentials and provider-specific logic must remain in the back
 - React Leaflet
 - Leaflet
 - TanStack Query
-- Axios or Fetch API
+- Axios as the HTTP client
+- Vitest and React Testing Library for testing
 
 Use local component state for UI interactions. Do not introduce a global state library unless there is a demonstrated need.
 
@@ -85,9 +87,16 @@ Use local component state for UI interactions. Do not introduce a global state l
 - Django
 - Django REST Framework
 - HTTPX
-- Pytest
-- pytest-django
+- django-cors-headers for CORS restriction
+- python-dotenv for loading environment variables
 - drf-spectacular for OpenAPI documentation
+- Pytest, pytest-django, and pytest-cov for testing
+- Ruff for linting
+
+Dependency files:
+
+- `requirements.txt` contains runtime dependencies only. Deployment installs only this file.
+- `requirements-dev.txt` contains development and testing dependencies (Pytest, pytest-django, pytest-cov, Ruff). It must include `-r requirements.txt` so one install sets up a full development environment.
 
 Use a Python version supported by the selected Django release and deployment platform.
 
@@ -159,8 +168,17 @@ weather-aware-truck-routing/
 │   │   ├── urls.py
 │   │   └── tests/
 │   │
+│   ├── application/
+│   │   ├── use_cases/
+│   │   │   └── analyze_trip.py
+│   │   └── tests/
+│   │
+│   ├── shared/
+│   │   └── types.py
+│   │
 │   ├── manage.py
 │   ├── requirements.txt
+│   ├── requirements-dev.txt
 │   └── .env.example
 │
 ├── frontend/
@@ -193,15 +211,24 @@ weather-aware-truck-routing/
 │   ├── architecture.md
 │   └── CLAUDE.md
 │
+├── CLAUDE.md
 ├── .gitignore
 └── README.md
 ```
 
 Do not create empty folders or unnecessary files simply to match this diagram. Create them when the corresponding implementation is needed.
 
+Structure rules:
+
+- Module tests live in a `tests/` package. Do not use `tests.py` files.
+- Modules do not contain `models.py`, `admin.py`, `views.py`, or `migrations/`. The application is stateless, and HTTP views belong in `api/`.
+- `backend/application/use_cases/analyze_trip.py` contains the analysis orchestrator (see Section 6). Its tests live in `backend/application/tests/`.
+- `backend/shared/types.py` contains the types and contracts shared across modules (see Section 7).
+- The root `CLAUDE.md` only imports `docs/CLAUDE.md`. Keep the instructions in `docs/CLAUDE.md`.
+
 ## 5. Backend Module Responsibilities
 
-Each module should be a proper Django app with its own `apps.py` and tests.
+Each module should be a proper Django app with its own `apps.py` and tests. Modules have no models, migrations, or admin registrations.
 
 ### 5.1 Geocoding Module
 
@@ -210,7 +237,8 @@ Responsibilities:
 - Send address queries to ORS.
 - Normalize geocoding results.
 - Return latitude and longitude.
-- Handle missing or ambiguous results.
+- Handle missing results.
+- Detect ambiguous results and return the candidate locations instead of choosing one. A result is ambiguous when the provider returns multiple plausible, materially different candidates with similar confidence scores. The numerical confidence threshold will be defined after verifying ORS behavior in Phase 2.
 - Handle provider errors and timeouts.
 
 It should not calculate routes or weather risks.
@@ -287,7 +315,7 @@ The ranking logic must follow the exact order defined in `requirements.md`.
 
 Keep the API view thin.
 
-Create one application-level orchestrator responsible for coordinating the analysis.
+Create one application-level orchestrator responsible for coordinating the analysis, located in `backend/application/use_cases/analyze_trip.py`.
 
 Suggested flow:
 
@@ -316,10 +344,10 @@ AnalyzeTripUseCase
 7. Retrieve weather forecasts
        |
        v
-8. Match forecasts to checkpoint ETAs
+8. Match forecasts to checkpoint ETAs and build 0–48-hour series
        |
        v
-9. Calculate checkpoint risks
+9. Calculate checkpoint risks (ETA-matched and hourly)
        |
        v
 10. Aggregate route metrics
@@ -341,7 +369,9 @@ A single orchestrator coordinating focused services is sufficient.
 
 Use lightweight Python dataclasses, typed dictionaries, or similar structures.
 
-Database models are not required for this assessment.
+Database models are not used.
+
+Define the types shared across modules in `backend/shared/types.py`: `TripInput`, `Location`, `Route`, `Checkpoint`, `HourlyForecast`, `RiskLevel`, `RouteMetrics`, and `Recommendation`. Types used only inside one module stay in that module. Risk thresholds and the risk severity/score mappings stay in the risk module.
 
 ### TripInput
 
@@ -349,7 +379,7 @@ Database models are not required for this assessment.
 - destination
 - departure_time
 - load_weight_lbs
-- checkpoint_interval_miles
+- checkpoint_interval_miles (default 25)
 
 ### Location
 
@@ -385,6 +415,23 @@ Database models are not required for this assessment.
 - final_risk
 - data_status
 - warnings
+- hourly_forecasts (list of `HourlyForecast`)
+
+### HourlyForecast
+
+One entry per hour offset from 0 to 48 after departure (49 entries per checkpoint). Used only by the forecast slider.
+
+- hour_offset
+- target_time (`departure_time + hour_offset`)
+- forecast_timestamp (null if unavailable)
+- wind_speed_mph
+- precipitation_inches_per_hour
+- snowfall_inches_per_hour
+- wind_risk
+- rain_risk
+- snow_risk
+- final_risk
+- data_status
 
 ### RiskLevel
 
@@ -403,7 +450,6 @@ Do not use alphabetical string sorting to determine risk severity. Define an exp
 
 - distance_miles
 - duration_seconds
-- estimated_arrival_time
 - low_miles
 - moderate_miles
 - high_miles
@@ -432,7 +478,7 @@ The checkpoint service must:
 4. Generate target checkpoint distances.
 5. Find the geometry segment containing each target distance.
 6. Interpolate latitude and longitude along that segment.
-7. Include the destination as the final endpoint where appropriate.
+7. Include an origin checkpoint at mile 0 and a destination checkpoint at the route's total distance, even when the destination does not align with the selected interval. Do not duplicate the destination checkpoint when it falls exactly on an interval multiple.
 
 Use a reliable geodesic calculation or a suitable geometry library.
 
@@ -444,6 +490,8 @@ Avoid repeatedly converting units throughout the application.
 
 All internal timestamps must be timezone-aware.
 
+Departure times in the past are rejected during request validation.
+
 Use provider step/segment durations when sufficient information is available.
 
 Otherwise:
@@ -454,15 +502,29 @@ Then:
 
 `checkpoint_eta = departure_time + elapsed_time`
 
-Match checkpoint ETA to the nearest available hourly weather timestamp.
+Match checkpoint ETA to the nearest available hourly weather timestamp. If two timestamps are equally close, choose the earlier one.
 
 Store both:
 - Estimated checkpoint arrival time.
 - Actual forecast timestamp used.
 
-If the forecast is unavailable, mark it as `UNKNOWN`.
+If forecast data is unavailable for the requested period, mark it as `UNKNOWN`.
 
 Do not substitute unrelated weather data.
+
+### Hourly Forecast Series
+
+For each checkpoint, the backend also returns an hourly series for the 0–48-hour period after departure (see `HourlyForecast` in Section 7):
+
+- One entry per hour offset from 0 to 48.
+- Each entry's target time is `departure_time + hour_offset`. Match it to a forecast timestamp using the same nearest-timestamp rule and earlier-timestamp tie-break.
+- The risk module calculates each entry's factor risks and final risk using the trip's cargo weight.
+- If forecast data is unavailable for an hour, that entry is `UNKNOWN`.
+- Build the series from the same Open-Meteo data used for ETA matching. Do not make extra provider requests for the slider.
+
+The series describes conditions at each checkpoint location at the selected hour, regardless of when the truck reaches it. It is for visualization only.
+
+Route metrics, ranking, and the recommendation always use the ETA-matched values. The hourly series never affects them.
 
 ## 10. Weather and Risk Boundaries
 
@@ -538,14 +600,15 @@ Primary endpoint:
 
 Supporting endpoint:
 
-`GET /api/health/`
+`GET /api/health/` (intentionally unversioned)
 
 The request serializer validates:
 
 - Origin and destination.
 - Timezone-aware departure time.
+- Departure time not in the past.
 - Positive cargo weight.
-- Checkpoint interval of 10, 25, or 50 miles.
+- Checkpoint interval of 10, 25, or 50 miles (optional; defaults to 25).
 
 The response should contain normalized application data, not raw provider responses.
 
@@ -560,6 +623,35 @@ Use structured error responses:
   }
 }
 ```
+
+Ambiguous geocoding returns the candidate locations in `details`:
+
+```json
+{
+  "error": {
+    "code": "GEOCODING_AMBIGUOUS",
+    "message": "The origin address matches multiple locations.",
+    "details": {
+      "field": "origin",
+      "candidates": [
+        { "label": "Springfield, IL, USA", "latitude": 39.80, "longitude": -89.64 },
+        { "label": "Springfield, MO, USA", "latitude": 37.21, "longitude": -93.29 }
+      ]
+    }
+  }
+}
+```
+
+HTTP status codes:
+
+| Status | Use |
+|---|---|
+| 200 | Successful request |
+| 400 | Invalid request |
+| 422 | Ambiguous geocoding (`GEOCODING_AMBIGUOUS`) |
+| 502 | Provider error |
+| 503 | Provider rate limit or temporary unavailability |
+| 504 | Provider timeout |
 
 Generate OpenAPI documentation.
 
@@ -591,9 +683,11 @@ Organize frontend code by feature.
 
 ### `features/weather`
 
-- Forecast slider
+- Forecast slider (reads each checkpoint's `hourly_forecasts`)
 - Weather information
 - Selected forecast timestamp
+
+The slider displays backend-provided values only. It does not calculate risk or change the route ranking.
 
 ### `features/risk`
 
@@ -649,6 +743,7 @@ Expected behavior:
 - Selecting a checkpoint changes the detail panel.
 - Moving the forecast slider updates displayed weather.
 - These UI interactions must not trigger new routing requests.
+- The forecast offset changes only the displayed weather and risk. It never changes route metrics, ranking, or the recommendation.
 
 TanStack Query can manage the analysis request lifecycle.
 
@@ -673,6 +768,8 @@ Do not expose API keys, stack traces, or provider request headers.
 
 ## 16. Testing Strategy
 
+Backend module tests live in each module's `tests/` package. Orchestrator tests live in `backend/application/tests/`.
+
 ### Backend Unit Tests
 
 Prioritize:
@@ -683,10 +780,12 @@ Prioritize:
 - Cargo-weight overrides.
 - Unknown data handling.
 - Checkpoint distance calculations.
+- Origin and destination checkpoints.
 - Coordinate interpolation.
 - ETA calculations.
 - Weather unit conversions.
-- Forecast timestamp matching.
+- Forecast timestamp matching, including the earlier-timestamp tie-break.
+- Hourly forecast series construction and hourly risks.
 - Route mileage aggregation.
 - Weighted average risk.
 - Route ranking.
@@ -697,6 +796,7 @@ Mock external requests.
 
 Test:
 - ORS geocoding.
+- Ambiguous geocoding results.
 - ORS routing.
 - One, two, and three returned routes.
 - No routes returned.
@@ -714,12 +814,17 @@ Normal tests must not require live API keys.
 Test:
 - Valid requests.
 - Invalid input.
+- Past departure times.
+- Default checkpoint interval.
 - Unsupported intervals.
+- Ambiguous geocoding error with candidates.
 - Provider errors.
 - Partial weather coverage.
 - Response structure.
 
 ### Frontend Tests
+
+Use Vitest and React Testing Library.
 
 Test:
 - Form validation.
@@ -728,6 +833,7 @@ Test:
 - Checkpoint selection.
 - Forecast slider.
 - No repeated analysis request when the slider changes.
+- Slider changes do not change the ranking or recommendation display.
 
 ## 17. Security and Configuration
 
@@ -759,18 +865,31 @@ Deployment requirements:
 
 Free hosting providers may impose sleeping, cold starts, or usage limits. Verify current terms before selecting a provider.
 
+Production serving requirements (to be selected and approved before deployment; not installed yet):
+
+- A production WSGI server. Do not use Django's development server in deployment.
+- Static-file handling for collected static files (for example, DRF and API documentation assets) when `DEBUG` is off.
+
+Install only `requirements.txt` in production. Docker is not used.
+
 ## 19. Architecture Decisions
 
 | Decision | Choice | Reason |
 |---|---|---|
 | Backend architecture | Modular monolith | Clear separation without microservice complexity |
-| Persistence | No database initially | Stateless assessment workflow |
+| Persistence | None (stateless) | No models, migrations, admin, authentication, or sessions |
+| Containerization | None | Docker is not part of this project |
+| Orchestrator location | `application/use_cases/analyze_trip.py` | One coordinator outside the API views |
+| Shared contracts | `shared/types.py` | One set of cross-module types; avoids circular imports |
 | Routing | ORS `driving-hgv` | Heavy-vehicle routing |
 | Weather | Open-Meteo | Non-commercial assessment use within its terms |
 | Map | Leaflet + OSM | Open-source mapping |
 | Risk calculations | Backend domain functions | One authoritative implementation |
 | Recommendation | Lexicographic comparison | Matches assessment requirements |
 | Frontend state | Local state + TanStack Query | Avoid unnecessary complexity |
+| Forecast slider | Backend-provided hourly series per checkpoint | No re-routing, no frontend risk logic, ranking unaffected |
+| Frontend testing | Vitest + React Testing Library | Integrates with Vite |
+| Frontend HTTP client | Axios | One client for the API service layer |
 | Provider integration | Backend adapters | Easier replacement and testing |
 
 ## 20. Definition of Done
