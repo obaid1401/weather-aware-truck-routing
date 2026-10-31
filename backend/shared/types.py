@@ -66,11 +66,24 @@ class DataStatus(StrEnum):
     UNAVAILABLE = "UNAVAILABLE"  # none; conditions are unknown
 
 
+class RiskLevel(StrEnum):
+    """Risk categories. Severity order and scores are defined in the risk module; never
+    compare these values alphabetically."""
+
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+    SEVERE = "SEVERE"
+    NO_TRAVEL = "NO_TRAVEL"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True)
 class HourlyForecast:
     """Forecast conditions at a checkpoint location `hour_offset` hours after departure.
 
-    Used only for the forecast slider. Missing values are `None`, never zero.
+    Used only for the forecast slider. Missing values are `None`, never zero. Risks stay
+    UNKNOWN until the risk module assesses the entry.
     """
 
     hour_offset: int
@@ -80,13 +93,17 @@ class HourlyForecast:
     precipitation_inches_per_hour: float | None
     snowfall_inches_per_hour: float | None
     data_status: DataStatus
+    wind_risk: RiskLevel = RiskLevel.UNKNOWN
+    rain_risk: RiskLevel = RiskLevel.UNKNOWN
+    snow_risk: RiskLevel = RiskLevel.UNKNOWN
+    final_risk: RiskLevel = RiskLevel.UNKNOWN
 
 
 @dataclass(frozen=True)
 class Checkpoint:
     """A point along a route. Weather fields hold the forecast matched to the checkpoint's
     estimated arrival time; they stay `None` (and UNAVAILABLE) until weather is applied or
-    when the forecast is missing."""
+    when the forecast is missing. Risk fields stay UNKNOWN until risk is assessed."""
 
     id: str
     route_id: str
@@ -100,10 +117,36 @@ class Checkpoint:
     snowfall_inches_per_hour: float | None = None
     data_status: DataStatus = DataStatus.UNAVAILABLE
     hourly_forecasts: tuple[HourlyForecast, ...] = ()
+    wind_risk: RiskLevel = RiskLevel.UNKNOWN
+    rain_risk: RiskLevel = RiskLevel.UNKNOWN
+    snow_risk: RiskLevel = RiskLevel.UNKNOWN
+    final_risk: RiskLevel = RiskLevel.UNKNOWN
+    warnings: tuple[str, ...] = ()
 
     @property
     def coordinate(self) -> Coordinate:
         return Coordinate(self.latitude, self.longitude)
+
+
+@dataclass(frozen=True)
+class RouteMetrics:
+    """Risk mileage for a route. Each segment between consecutive checkpoints takes the
+    risk of its downstream checkpoint; the risk miles add up to `distance_miles`."""
+
+    distance_miles: float
+    duration_seconds: float
+    low_miles: float
+    moderate_miles: float
+    high_miles: float
+    severe_miles: float
+    no_travel_miles: float
+    unknown_miles: float
+    average_risk_score: float | None  # None when no mile has a known risk
+    # Percentage of route miles whose segment has a known final risk (some factors may be
+    # missing).
+    weather_coverage_percent: float
+    # Percentage of route miles whose segment has all three weather values available.
+    complete_weather_coverage_percent: float
 
 
 # Errors
