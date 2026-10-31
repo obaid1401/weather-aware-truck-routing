@@ -9,6 +9,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from shared.datetimes import add_elapsed
+from shared.datetimes import require_timezone_aware as shared_require_timezone_aware
 from shared.types import Route
 
 # Step durations are used only when they add up to the route duration within this
@@ -116,11 +118,11 @@ def _from_steps(route: Route, distances: tuple[float, ...]) -> ElapsedTimes:
 
 
 def require_timezone_aware(departure_time: datetime) -> None:
-    if departure_time.tzinfo is None or departure_time.utcoffset() is None:
-        raise ValueError("departure_time must be timezone-aware")
+    shared_require_timezone_aware(departure_time, "departure_time")
 
 
 def arrival_time(departure_time: datetime, elapsed_seconds: float) -> datetime:
-    """`departure_time + elapsed`, keeping the departure's timezone."""
+    """The instant `elapsed_seconds` of real time after departure, in the departure's
+    timezone (correct across daylight-saving changes)."""
     require_timezone_aware(departure_time)
-    return departure_time + timedelta(seconds=elapsed_seconds)
+    return add_elapsed(departure_time, timedelta(seconds=elapsed_seconds))

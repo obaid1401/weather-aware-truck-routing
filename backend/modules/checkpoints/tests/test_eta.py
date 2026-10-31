@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -188,3 +189,33 @@ def test_arrival_time_crosses_midnight_and_compares_across_timezones() -> None:
 def test_naive_departure_is_rejected() -> None:
     with pytest.raises(ValueError):
         arrival_time(datetime(2026, 11, 5, 8, 0), 60)
+
+
+DENVER_TZ = ZoneInfo("America/Denver")
+
+
+@pytest.mark.parametrize(
+    "departure",
+    [
+        datetime(2026, 10, 31, 20, 0, tzinfo=DENVER_TZ),  # DST ends 2026-11-01 02:00
+        datetime(2027, 3, 13, 20, 0, tzinfo=DENVER_TZ),  # DST starts 2027-03-14 02:00
+    ],
+)
+@pytest.mark.parametrize("hours", [1, 6, 7, 24, 48])
+def test_arrival_time_is_real_elapsed_time_across_dst(departure: datetime, hours: int) -> None:
+    arrival = arrival_time(departure, hours * 3600)
+
+    assert arrival.astimezone(UTC) - departure.astimezone(UTC) == timedelta(hours=hours)
+    assert arrival.tzinfo is DENVER_TZ
+
+
+def test_arrival_time_during_the_repeated_fall_back_hour() -> None:
+    # 01:30 happens twice on 2026-11-01 in Denver: first in MDT, then in MST.
+    departure = datetime(2026, 11, 1, 0, 30, tzinfo=DENVER_TZ)
+
+    first, second = arrival_time(departure, 3600), arrival_time(departure, 7200)
+
+    assert (first.hour, first.minute) == (second.hour, second.minute) == (1, 30)
+    assert first.utcoffset() == timedelta(hours=-6)
+    assert second.utcoffset() == timedelta(hours=-7)
+    assert second.astimezone(UTC) - first.astimezone(UTC) == timedelta(hours=1)
