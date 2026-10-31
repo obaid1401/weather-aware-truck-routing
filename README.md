@@ -19,7 +19,8 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 - **Phase 2 (External API Integrations):** done. ORS geocoding, Valhalla truck routing, and Open-Meteo hourly forecasts.
 - **Phase 3 (Route and Checkpoint Processing):** done. Checkpoints at mile 0, every 10/25/50 miles along the route geometry, and at the destination, with step-based arrival time estimates.
 - **Phase 4 (Weather Processing):** done. Forecasts matched to each checkpoint's arrival time, a 0–48-hour hourly series per checkpoint, shared locations fetched once, and missing data kept as unknown.
-- **Next:** Phase 5 (Risk Calculation). The trip analysis endpoint and the frontend UI are not built yet.
+- **Phase 5 (Risk Calculation):** done. Wind, rain, and snow risk with cargo-weight rules, final checkpoint and hourly risks, and route risk miles, distance-weighted average risk, and weather coverage.
+- **Next:** Phase 6 (Route Recommendation). The trip analysis endpoint and the frontend UI are not built yet.
 
 ## Documentation
 
