@@ -15,7 +15,9 @@ jobs:
     name: Backend checks
     runs-on: ubuntu-latest
     env:
+      # Dummy values so Django can start. Tests never call live APIs, so no real key is needed.
       DJANGO_SECRET_KEY: ci-only-insecure-secret-key
+      ORS_API_KEY: ci-only-dummy-ors-key
 
     steps:
       - name: Checkout repository
