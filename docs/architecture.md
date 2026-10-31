@@ -503,6 +503,12 @@ The checkpoint service must:
 
 Use a reliable geodesic calculation or a suitable geometry library.
 
+Implementation notes (`modules/checkpoints/`):
+
+- Segment lengths are great-circle (haversine) distances, and checkpoint positions are interpolated along the great circle of the containing segment (`shared/geo.py`).
+- Measured geometry length differs slightly from the provider's road distance (about 0.1% on Valhalla routes). Cumulative distances are scaled so the final geometry point is exactly at the provider's route distance. This keeps checkpoint mileage consistent with route totals.
+- Checkpoint IDs are `<route id>-cp-<n>`, numbered from 0 at the origin.
+
 Convert provider distances to miles at the provider normalization boundary.
 
 Avoid repeatedly converting units throughout the application.
@@ -514,6 +520,8 @@ All internal timestamps must be timezone-aware.
 Departure times in the past are rejected during request validation.
 
 Use provider step/segment durations when sufficient information is available.
+
+Step durations are sufficient when the steps cover the whole geometry without gaps and their total is within 1% (or 60 seconds, whichever is larger) of the route duration. Steps must also run forward along the geometry and have non-negative, finite durations. Each step's duration is spread across its geometry in proportion to distance. A step with time but no length is a stop at that point: a checkpoint exactly at the point gets the arrival time, and later checkpoints include the full stop. The result is rescaled so the destination ETA equals `departure_time + route_duration`. This logic lives in `modules/checkpoints/domain/eta.py`.
 
 Otherwise:
 
