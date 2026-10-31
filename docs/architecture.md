@@ -788,7 +788,7 @@ Organize frontend code by feature.
 - Weather information
 - Selected forecast timestamp
 
-The slider displays backend-provided values only. It does not calculate risk or change the route ranking.
+The slider displays backend-provided values only. It does not calculate risk or change the route ranking. The selected forecast hour also drives the weather heatmap (see `map`).
 
 ### `features/risk`
 
@@ -810,6 +810,20 @@ The slider displays backend-provided values only. It does not calculate risk or 
 - Checkpoint markers
 - Risk legend
 - Selected route styling
+- Weather heatmap layer and its legend
+
+#### Weather heatmap
+
+The heatmap is built only from data already in the analysis response, using the approved React Leaflet and Leaflet libraries. No heatmap plugin or other dependency is added without approval.
+
+- Scope: the selected route's corridor.
+- Rendering: one translucent Leaflet circle (`Circle` from React Leaflet) per checkpoint, centred on the checkpoint's coordinates. The radius is about half the checkpoint interval, so the circles form a band along the corridor.
+- Colour: the checkpoint's `final_risk` from its `hourly_forecasts` entry for the selected `hour_offset`, using the same risk colours and labels as the risk legend. `UNKNOWN` uses a distinct neutral style and is labelled `Unavailable`, never shown as low risk.
+- Real data only: each circle represents exactly one checkpoint's backend forecast. Values are not interpolated or blended between checkpoints, and no colour gradient implies data that does not exist.
+- Updates: changing the slider re-renders the layer from the in-memory response. No request is sent.
+- Legend: lists every risk level with its colour and text label, explains that each circle is the forecast at one checkpoint for the selected hour, and notes that it is a forecast, not live radar.
+- Accessibility: risk is shown by text labels (legend, checkpoint details), not by colour alone.
+- The heatmap is visualization only. It never changes route metrics, ranking, or the recommendation, and the frontend never calculates risk.
 
 ### `services`
 
@@ -936,6 +950,7 @@ Test:
 - Forecast slider.
 - No repeated analysis request when the slider changes.
 - Slider changes do not change the ranking or recommendation display.
+- Weather heatmap: one circle per checkpoint, coloured from the selected hour's backend risk; updates when the slider changes; `UNKNOWN` shown as unavailable; legend labels present.
 
 ## 17. Security and Configuration
 
@@ -987,6 +1002,7 @@ Install only `requirements.txt` in production. Docker is not used.
 | Routing | Valhalla `truck` | Heavy-vehicle routing with up to three genuine routes, including long trips |
 | Weather | Open-Meteo | Non-commercial assessment use within its terms |
 | Map | Leaflet + OSM | Open-source mapping |
+| Weather heatmap | Leaflet circles per checkpoint, coloured by backend hourly risk | No new dependency; shows only real checkpoint forecasts |
 | Risk calculations | Backend domain functions | One authoritative implementation |
 | Recommendation | Lexicographic comparison | Matches assessment requirements |
 | Frontend state | Local state + TanStack Query | Avoid unnecessary complexity |
