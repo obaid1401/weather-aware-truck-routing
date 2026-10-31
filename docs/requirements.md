@@ -45,7 +45,8 @@ Use the following services:
 | Interactive map | React Leaflet |
 | Map data and tiles | OpenStreetMap |
 | API documentation | OpenAPI / Swagger |
-| Testing | Pytest, pytest-django, frontend testing tools |
+| Backend testing | Pytest, pytest-django |
+| Frontend testing | Vitest, React Testing Library |
 
 ### External API restrictions
 
@@ -113,8 +114,9 @@ The application must collect:
 Validation:
 - Origin and destination are required.
 - Departure time must be valid and timezone-aware.
+- Departure time must not be in the past. Reject past departure times with a validation error.
 - Cargo weight must be a positive number.
-- Checkpoint interval must be 10, 25, or 50 miles.
+- Checkpoint interval must be 10, 25, or 50 miles. If omitted, use 25 miles.
 - Prevent duplicate submissions while analysis is running.
 - Preserve form values if a request fails.
 
@@ -130,6 +132,13 @@ Use 25 miles as the default.
 
 Checkpoint placement must use cumulative route distance, not the number of coordinates in the route geometry.
 
+Checkpoint placement rules:
+
+- Always include an origin checkpoint at mile 0.
+- Place intermediate checkpoints at each multiple of the selected interval along the route.
+- Always include a destination checkpoint at the route's total distance, even when it does not align with the selected interval.
+- Do not create a duplicate checkpoint when the destination falls exactly on an interval multiple.
+
 For every checkpoint, store:
 
 - Checkpoint ID
@@ -144,8 +153,7 @@ For every checkpoint, store:
 - Individual weather risk levels
 - Final risk level
 - Data availability status
-
-Include the destination as the final endpoint where appropriate.
+- Hourly forecast data for the 0–48-hour period after departure (see FR-12)
 
 ### FR-03: Route Generation
 
@@ -156,6 +164,12 @@ Include the destination as the final endpoint where appropriate.
 - Validate returned route data.
 - Assign stable application route IDs.
 - Handle provider errors and unavailable alternatives.
+
+Geocoding results:
+
+- If an address returns no usable result, stop the analysis and return a geocoding error.
+- If an address is ambiguous, stop the analysis and return an error that includes the candidate locations (label, latitude, longitude). Do not silently choose one.
+- An address is ambiguous when the provider returns multiple plausible, materially different candidates with similar confidence scores. The numerical confidence threshold is not yet defined; it will be set after verifying the provider's actual behavior in Phase 2.
 
 Never create fake alternatives.
 
@@ -207,12 +221,15 @@ For this assessment, treat the hourly accumulations as hourly rates when applyin
 Weather matching rules:
 
 - Match checkpoint ETA to the nearest available hourly forecast timestamp.
+- If two hourly timestamps are equally close to the ETA, choose the earlier timestamp.
 - Store the timestamp actually used.
 - Do not use current weather as a substitute for unavailable future weather.
-- If the forecast is missing or outside the available horizon, mark it `UNKNOWN`.
+- If forecast data is unavailable for the requested period (missing or outside the available horizon), mark it `UNKNOWN`.
 - Never convert missing weather into `LOW`.
 
 Use batching or multi-coordinate requests where supported. Avoid unnecessarily sending one request per checkpoint.
+
+The same forecast retrieval must also provide the 0–48-hour hourly data required by FR-12. Do not make separate provider requests for the forecast slider.
 
 ### FR-06: Weather Risk Rules
 
@@ -320,6 +337,8 @@ Rank routes using this exact order:
 
 This must be a lexicographic comparison, not a weighted scoring formula.
 
+Route metrics, ranking, and the recommendation must always use the weather matched to each checkpoint's estimated arrival time. The forecast slider (FR-12) never affects them.
+
 If all four criteria are tied:
 - Prefer the shorter route.
 - If still tied, preserve provider order.
@@ -368,16 +387,28 @@ The route comparison panel must display:
 
 Provide a slider from 0 to 48 hours after departure.
 
-The slider must:
+Data contract:
+
+- Each checkpoint contains hourly forecast data for the 0–48-hour period after departure, where available: one entry per hour offset from 0 to 48.
+- Each entry's target time is `departure_time + hour_offset`. It is matched to a forecast timestamp using the FR-05 nearest-timestamp rule, including the earlier-timestamp tie-break.
+- Each entry contains the normalized weather values, the individual factor risks, and the final risk, calculated by the backend using the trip's cargo weight.
+- Missing forecast data is represented as `UNKNOWN`.
+
+The slider selects an hour relative to departure and must:
 
 - Display the selected hour.
 - Display the corresponding timestamp.
-- Update the checkpoint weather visualization.
+- Update the checkpoint weather and risk visualization using the matching hourly entry.
 - Show unavailable forecast values as `UNKNOWN` or `Unavailable`.
 
-Changing the slider must use previously retrieved forecast data.
+The slider shows the forecast conditions at each checkpoint location at the selected hour, regardless of when the truck is expected to reach that checkpoint.
 
-It must not trigger a new route-generation request.
+Slider interaction is for visualization only:
+
+- It must use previously retrieved forecast data.
+- It must not trigger a new route-generation or weather request.
+- It must not change route metrics, ranking, or the recommendation.
+- The frontend must not calculate risk; it displays the risk values provided by the backend.
 
 The map is a forecast-based checkpoint/corridor visualization, not live weather radar.
 
@@ -386,7 +417,9 @@ The map is a forecast-based checkpoint/corridor visualization, not live weather 
 Handle:
 
 - Invalid form input
+- Departure times in the past
 - Geocoding failures
+- Ambiguous geocoding results (return the candidate locations)
 - No routes returned
 - Routing provider errors
 - API quota/rate-limit errors
@@ -417,6 +450,10 @@ Example request:
 }
 ```
 
+`checkpoint_interval_miles` is optional and defaults to 25.
+
+Health endpoint: `GET /api/health/`
+
 The response should contain:
 
 - Trip information
@@ -427,6 +464,7 @@ The response should contain:
 - Weather data
 - Individual risk factors
 - Final checkpoint risks
+- Hourly checkpoint forecasts and risks for 0–48 hours after departure
 - Route-level metrics
 - Recommendation
 - Ranking explanations
@@ -442,7 +480,16 @@ Use consistent risk enum values:
 
 Define concrete DRF serializers for the response. Do not expose raw provider responses as the public API contract.
 
-Return structured errors with appropriate HTTP status codes.
+Return structured errors with these HTTP status codes:
+
+| Status | Use |
+|---|---|
+| 200 | Successful request |
+| 400 | Invalid request |
+| 422 | Ambiguous geocoding |
+| 502 | Provider error |
+| 503 | Provider rate limit or temporary unavailability |
+| 504 | Provider timeout |
 
 Keep all API credentials on the backend.
 
@@ -502,7 +549,7 @@ The project is ready for evaluation when:
 12. Recommendation follows the exact required ranking order.
 13. No-travel exposure is clearly displayed.
 14. The map shows routes and risk-based checkpoints.
-15. The forecast slider works without re-running routing.
+15. The forecast slider works without re-running routing and without changing the route ranking.
 16. API and frontend errors are handled.
 17. Core business logic has automated tests.
 18. Setup and deployment instructions are documented.

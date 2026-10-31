@@ -13,6 +13,8 @@ Follow both documents throughout development.
 - `architecture.md` defines how the application must be structured and built.
 - This file defines how implementation should be carried out.
 
+The root `CLAUDE.md` imports this file so Claude Code loads it automatically. Keep all instructions here.
+
 Do not independently redesign the architecture or introduce new technologies.
 
 ## 2. Implementation Rules
@@ -32,8 +34,10 @@ Do not independently redesign the architecture or introduce new technologies.
 - Do not fabricate routes, weather data, or analysis results.
 - Do not treat unknown weather as low risk.
 - Do not change business rules or route-ranking criteria.
-- Do not add a database, authentication, Redis, Celery, or other infrastructure unless explicitly approved.
+- Do not add a database, models, migrations, Django admin, authentication, sessions, Docker, Redis, Celery, or other infrastructure unless explicitly approved.
 - Do not install unnecessary dependencies.
+- Put runtime dependencies in `backend/requirements.txt` and development/testing dependencies in `backend/requirements-dev.txt`.
+- Place module tests in `tests/` packages, not `tests.py` files.
 
 ## 3. Implementation Phases
 
@@ -41,13 +45,16 @@ Implement the project phase by phase, in the following order.
 
 ### Phase 1 — Backend Foundation
 
-- Initialize and configure Django.
+- Configure Django as a stateless application (no database, admin, authentication, or sessions).
 - Configure Django REST Framework.
-- Implement environment-based settings.
-- Set up the approved backend module structure.
-- Implement request serializers and validation.
-- Establish the API response and error formats.
-- Add the health endpoint.
+- Implement environment-based settings using `python-dotenv`, and document required variables in `.env.example`.
+- Configure CORS using `django-cors-headers`.
+- Set up the approved backend structure: modules, `api/`, `application/use_cases/`, and `shared/types.py`.
+- Split dependencies into `requirements.txt` and `requirements-dev.txt`.
+- Configure Pytest and pytest-django.
+- Implement request serializers and validation, including past-departure rejection and the default 25-mile interval.
+- Establish the API response and error formats and the documented HTTP status codes, including the ambiguous-geocoding error with candidate locations.
+- Add the `/api/health/` endpoint.
 - Configure API documentation.
 
 **Completion criteria:** Backend starts successfully, request validation works, and the API contract is established.
@@ -55,7 +62,8 @@ Implement the project phase by phase, in the following order.
 ### Phase 2 — External API Integrations
 
 - Implement the OpenRouteService client.
-- Implement geocoding.
+- Implement geocoding, returning candidate locations when a result is ambiguous.
+- Verify ORS geocoding behavior and propose a numerical ambiguity threshold for approval before relying on it.
 - Implement heavy-vehicle routing using `driving-hgv`.
 - Request genuine alternative routes where supported.
 - Implement the Open-Meteo client.
@@ -70,6 +78,7 @@ Implement the project phase by phase, in the following order.
 - Process route geometry.
 - Calculate cumulative route distances.
 - Generate checkpoints at 10, 25, and 50-mile intervals.
+- Include an origin checkpoint at mile 0 and always include a destination checkpoint.
 - Interpolate checkpoint coordinates.
 - Calculate estimated checkpoint arrival times.
 - Handle final partial segments.
@@ -80,8 +89,9 @@ Implement the project phase by phase, in the following order.
 
 - Retrieve hourly forecasts for checkpoints.
 - Normalize wind, precipitation, and snowfall units.
-- Match forecasts to estimated checkpoint arrival times.
+- Match forecasts to estimated checkpoint arrival times, choosing the earlier timestamp when two are equally close.
 - Store the forecast timestamp used.
+- Build each checkpoint's 0–48-hour hourly forecast series from the same provider data.
 - Handle unavailable forecast hours.
 - Handle partial weather responses.
 
@@ -93,6 +103,7 @@ Implement the project phase by phase, in the following order.
 - Implement cargo-weight overrides.
 - Calculate individual weather risks.
 - Calculate final checkpoint risk.
+- Calculate risks for each hourly forecast entry.
 - Handle unknown values.
 - Aggregate route risk miles.
 - Calculate distance-weighted average risk.
@@ -111,7 +122,7 @@ Implement the project phase by phase, in the following order.
 - Generate recommendation explanations.
 - Generate no-travel and incomplete-data warnings.
 
-**Completion criteria:** Routes are ranked using the exact required criteria. Do not replace the ranking logic with an alternative weighted score.
+**Completion criteria:** Routes are ranked using the exact required criteria and ETA-matched weather only. Do not replace the ranking logic with an alternative weighted score.
 
 ### Phase 7 — Backend Integration
 
@@ -119,16 +130,18 @@ Implement the project phase by phase, in the following order.
 - Implement `POST /api/v1/routes/analyze/`.
 - Return normalized trip, route, checkpoint, weather, risk, and recommendation data.
 - Handle provider failures and partial analysis results.
+- Add orchestrator tests in `backend/application/tests/`.
 - Add API integration tests.
 
 **Completion criteria:** A complete trip analysis works through one API request, and the response follows the documented API contract.
 
 ### Phase 8 — Frontend Foundation
 
-- Initialize React with TypeScript and Vite.
+- Replace the Vite template content (React, TypeScript, and Vite are already initialized).
+- Configure Vitest and React Testing Library.
 - Configure Material UI.
 - Implement the approved frontend structure.
-- Create the API client.
+- Create the API client using Axios.
 - Define request and response types.
 - Build the trip input form.
 - Implement validation, loading, and error states.
@@ -145,7 +158,7 @@ Implement the project phase by phase, in the following order.
 - Display route alternatives.
 - Display risk-colored checkpoints.
 - Implement checkpoint details.
-- Implement the 0–48-hour forecast slider.
+- Implement the 0–48-hour forecast slider using each checkpoint's hourly forecast data. The slider must not calculate risk or change route ranking.
 - Display unavailable forecast data clearly.
 - Implement responsive layouts.
 
@@ -157,6 +170,7 @@ Implement the project phase by phase, in the following order.
 - Run frontend tests.
 - Fix identified defects.
 - Run linting and production builds.
+- Select a production WSGI server and static-file handling, and get approval before installing them.
 - Configure deployment environment variables.
 - Deploy frontend and backend.
 - Test the complete hosted application.
@@ -175,7 +189,7 @@ Implement the project phase by phase, in the following order.
 - Test route aggregation and ranking.
 - Mock external API requests.
 - Test provider failures and incomplete data.
-- Test frontend form validation and forecast interactions.
+- Test frontend form validation and forecast interactions using Vitest and React Testing Library.
 - Run relevant tests before completing each phase.
 
 Never claim a test passed unless it was actually executed.
