@@ -176,6 +176,7 @@ weather-aware-truck-routing/
 │   │   ├── geo.py
 │   │   ├── http.py
 │   │   ├── validation.py
+│   │   ├── datetimes.py
 │   │   └── tests/
 │   │
 │   ├── manage.py
@@ -230,6 +231,7 @@ Structure rules:
   - `geo.py`: geometry utilities (great-circle distance, GeoJSON position validation). Must not depend on HTTP code.
   - `http.py`: the shared provider HTTP client (timeouts and User-Agent) and the conversion of transport failures and HTTP error statuses into analysis errors.
   - `validation.py`: small value-validation helpers used when parsing provider responses.
+  - `datetimes.py`: timezone-aware time arithmetic that adds real elapsed time (correct across daylight-saving changes).
   - `tests/`: tests for the shared code.
 - The root `CLAUDE.md` only imports `docs/CLAUDE.md`. Keep the instructions in `docs/CLAUDE.md`.
 
@@ -454,6 +456,14 @@ One entry per hour offset from 0 to 48 after departure (49 entries per checkpoin
 - final_risk
 - data_status
 
+### DataStatus
+
+How many of the three weather values (wind, precipitation, snowfall) are known for a checkpoint or hourly entry:
+
+- `AVAILABLE`: all three
+- `PARTIAL`: some, but not all
+- `UNAVAILABLE`: none (conditions unknown)
+
 ### RiskLevel
 
 Use these exact values:
@@ -517,6 +527,8 @@ Avoid repeatedly converting units throughout the application.
 
 All internal timestamps must be timezone-aware.
 
+Elapsed time (checkpoint ETAs and hourly-series target times) is added in UTC and converted back to the departure's timezone (`shared/datetimes.py`). Adding a duration directly to a datetime with a named timezone adds wall-clock time, which is off by an hour across a daylight-saving change.
+
 Departure times in the past are rejected during request validation.
 
 Use provider step/segment durations when sufficient information is available.
@@ -540,6 +552,17 @@ Store both:
 If forecast data is unavailable for the requested period, mark it as `UNKNOWN`.
 
 Do not substitute unrelated weather data.
+
+Implementation notes (`modules/weather/services/`):
+
+- Matching uses whole UTC hours, because the forecast is hourly in UTC. Only the nearest hour is used. If that hour is missing (a gap, or beyond the 16-day horizon), the conditions are `UNKNOWN`; a neighbouring hour is never substituted.
+- `data_status` records how many of the three values (wind, precipitation, snowfall) are known: `AVAILABLE` (all), `PARTIAL` (some), or `UNAVAILABLE` (none). Missing values stay `null`; a missing variable never discards the others, and zero is real data.
+- A checkpoint within 0.1 mile of a location already being fetched shares the nearest such location's forecast (the earlier location on a tie). This removes the duplicate origin and shared stretches across routes. The model grid is kilometres wide, so the forecast is unchanged.
+- The forecast horizon is computed from the server clock. If Open-Meteo's range ends earlier (HTTP 400, "out of allowed range from … to YYYY-MM-DD"), the request is retried once with the window ending at 23:00 UTC on that date. Available hours are kept and later hours stay `UNAVAILABLE`. Other 400 errors, or range messages that cannot be parsed, are not retried and become `ProviderError` as before.
+- Provider responses are rejected as invalid (`ProviderError`) when units are missing or unexpected, when hourly timestamps are duplicated, out of order, or not on whole hours, or when `location_id` values show results out of request order.
+- One fetch per location covers both ETA matching and the 0–48-hour series: from departure to the later of departure + 48 hours and the last checkpoint ETA.
+- Locations are fetched in sequential batches of up to 100. Open-Meteo counts each location as one call (600 per minute on the free tier), and concurrent batches were measured to be no faster. After a rate-limit error, the remaining batches are skipped.
+- Partial failures: if some batches fail, their checkpoints are `UNAVAILABLE` and a warning is returned. If every batch fails, the provider error is raised (HTTP 502, 503, or 504) and no analysis is returned.
 
 ### Hourly Forecast Series
 
