@@ -6,12 +6,32 @@ from api.exceptions import api_exception_handler
 from shared.types import (
     AnalysisError,
     GeocodingAmbiguousError,
+    GeocodingNotFoundError,
     Location,
+    NoRouteFoundError,
     ProviderError,
     ProviderRateLimitError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+
+
+def test_geocoding_not_found_returns_422() -> None:
+    response = api_exception_handler(GeocodingNotFoundError("destination"), {})
+
+    assert response.status_code == 422
+    assert response.data["error"] == {
+        "code": "GEOCODING_NOT_FOUND",
+        "message": "No location was found for the destination address.",
+        "details": {"field": "destination"},
+    }
+
+
+def test_no_route_found_returns_422() -> None:
+    response = api_exception_handler(NoRouteFoundError(), {})
+
+    assert response.status_code == 422
+    assert response.data["error"]["code"] == "ROUTE_NOT_FOUND"
 
 
 @pytest.mark.parametrize(

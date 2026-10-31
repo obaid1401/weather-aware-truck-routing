@@ -38,7 +38,7 @@ The backend is responsible for all calculations and business rules. The frontend
     Geocoding       Routing       Checkpoints
         |             |             |
         v             v             |
-   OpenRouteService  ORS HGV        |
+   OpenRouteService  Valhalla       |
                       |             |
                       +-------------+
                                     |
@@ -61,7 +61,7 @@ The backend is responsible for all calculations and business rules. The frontend
                            React Results UI
 ```
 
-The frontend must never call ORS or Open-Meteo directly.
+The frontend must never call ORS, Valhalla, or Open-Meteo directly.
 
 All external API credentials and provider-specific logic must remain in the backend.
 
@@ -105,13 +105,11 @@ Use a Python version supported by the selected Django release and deployment pla
 | Service | Responsibility |
 |---|---|
 | OpenRouteService | Geocoding |
-| OpenRouteService | Heavy-vehicle routing |
+| Valhalla | Heavy-vehicle routing |
 | Open-Meteo | Hourly weather forecasts |
 | OpenStreetMap | Map tiles |
 
-Use ORS `driving-hgv` for routing.
-
-Keep in mind that ORS alternative-route functionality has documented distance restrictions. Verify feasibility before building around the assumption that three alternatives are always available.
+Use Valhalla's `/route` endpoint with `truck` costing and `alternates: 2` (up to three routes). The server is configured by `VALHALLA_BASE_URL` and defaults to the public FOSSGIS server, which needs no API key but has a usage policy and a 1,500 km truck route limit. Valhalla can still return fewer than three routes.
 
 Open-Meteo's free service is intended for non-commercial use. Do not assume assessment/demo usage grants commercial production rights.
 
@@ -174,7 +172,11 @@ weather-aware-truck-routing/
 │   │   └── tests/
 │   │
 │   ├── shared/
-│   │   └── types.py
+│   │   ├── types.py
+│   │   ├── geo.py
+│   │   ├── http.py
+│   │   ├── validation.py
+│   │   └── tests/
 │   │
 │   ├── manage.py
 │   ├── requirements.txt
@@ -223,7 +225,12 @@ Structure rules:
 - Module tests live in a `tests/` package. Do not use `tests.py` files.
 - Modules do not contain `models.py`, `admin.py`, `views.py`, or `migrations/`. The application is stateless, and HTTP views belong in `api/`.
 - `backend/application/use_cases/analyze_trip.py` contains the analysis orchestrator (see Section 6). Its tests live in `backend/application/tests/`.
-- `backend/shared/types.py` contains the types and contracts shared across modules (see Section 7).
+- `backend/shared/` contains code shared across modules:
+  - `types.py`: shared types, contracts, and analysis errors (see Section 7). No Django, DRF, or HTTP dependencies.
+  - `geo.py`: geometry utilities (great-circle distance, GeoJSON position validation). Must not depend on HTTP code.
+  - `http.py`: the shared provider HTTP client (timeouts and User-Agent) and the conversion of transport failures and HTTP error statuses into analysis errors.
+  - `validation.py`: small value-validation helpers used when parsing provider responses.
+  - `tests/`: tests for the shared code.
 - The root `CLAUDE.md` only imports `docs/CLAUDE.md`. Keep the instructions in `docs/CLAUDE.md`.
 
 ## 5. Backend Module Responsibilities
@@ -238,7 +245,7 @@ Responsibilities:
 - Normalize geocoding results.
 - Return latitude and longitude.
 - Handle missing results.
-- Detect ambiguous results and return the candidate locations instead of choosing one. A result is ambiguous when the provider returns multiple plausible, materially different candidates with similar confidence scores. The numerical confidence threshold will be defined after verifying ORS behavior in Phase 2.
+- Detect ambiguous results and return the candidate locations instead of choosing one. A result is ambiguous when the provider returns multiple plausible, materially different candidates with similar confidence scores. Approved thresholds: plausible means within 0.1 of the best confidence; materially different means more than 25 miles apart. Only plausible candidates can be selected.
 - Handle provider errors and timeouts.
 
 It should not calculate routes or weather risks.
@@ -247,10 +254,11 @@ It should not calculate routes or weather risks.
 
 Responsibilities:
 
-- Communicate with ORS.
-- Use the `driving-hgv` profile.
-- Request alternative routes where supported.
-- Normalize route geometry.
+- Communicate with Valhalla.
+- Use the `truck` costing model.
+- Request up to two alternate routes.
+- Decode route geometry (encoded polyline, precision 6) and normalize it.
+- Map provider maneuvers to route steps.
 - Normalize distance and duration.
 - Validate provider responses.
 - Return genuine route alternatives.
@@ -371,7 +379,7 @@ Use lightweight Python dataclasses, typed dictionaries, or similar structures.
 
 Database models are not used.
 
-Define the types shared across modules in `backend/shared/types.py`: `TripInput`, `Location`, `Route`, `Checkpoint`, `HourlyForecast`, `RiskLevel`, `RouteMetrics`, and `Recommendation`. Types used only inside one module stay in that module. Risk thresholds and the risk severity/score mappings stay in the risk module.
+Define the types shared across modules in `backend/shared/types.py`: `Coordinate`, `TripInput`, `Location`, `Route`, `RouteStep`, `Checkpoint`, `HourlyForecast`, `RiskLevel`, `RouteMetrics`, and `Recommendation`. Types used only inside one module stay in that module. Risk thresholds and the risk severity/score mappings stay in the risk module.
 
 ### TripInput
 
@@ -387,15 +395,28 @@ Define the types shared across modules in `backend/shared/types.py`: `TripInput`
 - latitude
 - longitude
 
+### Coordinate
+
+- latitude
+- longitude
+
 ### Route
 
 - id
 - label
-- geometry
+- geometry (list of `Coordinate`)
 - distance_miles
 - duration_seconds
+- steps (list of `RouteStep`; provider maneuvers, used for checkpoint ETAs)
 - estimated_arrival_time
 - checkpoints
+
+### RouteStep
+
+- start_index (index into the route geometry)
+- end_index
+- distance_miles
+- duration_seconds
 
 ### Checkpoint
 
@@ -648,7 +669,7 @@ HTTP status codes:
 |---|---|
 | 200 | Successful request |
 | 400 | Invalid request |
-| 422 | Ambiguous geocoding (`GEOCODING_AMBIGUOUS`) |
+| 422 | Ambiguous geocoding (`GEOCODING_AMBIGUOUS`); address not found (`GEOCODING_NOT_FOUND`); no route found (`ROUTE_NOT_FOUND`, `ROUTE_DISTANCE_LIMIT`) |
 | 502 | Provider error |
 | 503 | Provider rate limit or temporary unavailability |
 | 504 | Provider timeout |
@@ -797,8 +818,9 @@ Mock external requests.
 Test:
 - ORS geocoding.
 - Ambiguous geocoding results.
-- ORS routing.
+- Valhalla routing, including polyline decoding and maneuver mapping.
 - One, two, and three returned routes.
+- Valhalla no-route and distance-limit errors.
 - No routes returned.
 - Provider rate limits.
 - Provider timeouts.
@@ -881,7 +903,8 @@ Install only `requirements.txt` in production. Docker is not used.
 | Containerization | None | Docker is not part of this project |
 | Orchestrator location | `application/use_cases/analyze_trip.py` | One coordinator outside the API views |
 | Shared contracts | `shared/types.py` | One set of cross-module types; avoids circular imports |
-| Routing | ORS `driving-hgv` | Heavy-vehicle routing |
+| Geocoding | ORS | Free geocoding with confidence scores |
+| Routing | Valhalla `truck` | Heavy-vehicle routing with up to three genuine routes, including long trips |
 | Weather | Open-Meteo | Non-commercial assessment use within its terms |
 | Map | Leaflet + OSM | Open-source mapping |
 | Risk calculations | Backend domain functions | One authoritative implementation |

@@ -135,4 +135,8 @@ CORS_URLS_REGEX = r"^/api/.*$"
 
 # External providers
 
+# OpenRouteService is used for geocoding only.
 ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
+
+# Valhalla is used for truck routing. The public FOSSGIS server is subject to its usage policy.
+VALHALLA_BASE_URL = os.environ.get("VALHALLA_BASE_URL", "https://valhalla1.openstreetmap.de")

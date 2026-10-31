@@ -16,6 +16,8 @@ from rest_framework.response import Response
 from shared.types import (
     AnalysisError,
     GeocodingAmbiguousError,
+    GeocodingNotFoundError,
+    NoRouteFoundError,
     ProviderError,
     ProviderRateLimitError,
     ProviderTimeoutError,
@@ -26,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 ANALYSIS_ERROR_STATUS: dict[type[AnalysisError], int] = {
     GeocodingAmbiguousError: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    GeocodingNotFoundError: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    NoRouteFoundError: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ProviderError: status.HTTP_502_BAD_GATEWAY,
     ProviderRateLimitError: status.HTTP_503_SERVICE_UNAVAILABLE,
     ProviderUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
