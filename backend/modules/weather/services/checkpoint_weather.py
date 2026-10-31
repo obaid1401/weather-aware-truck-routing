@@ -6,8 +6,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from modules.weather.services.forecast_matching import data_status, match_forecast
+from modules.weather.services.forecast_matching import (
+    data_status,
+    match_forecast,
+    nearest_forecast_hour,
+)
 from modules.weather.services.open_meteo import (
+    FORECAST_HORIZON_DAYS,
     MAX_LOCATIONS_PER_REQUEST,
     ForecastHour,
     OpenMeteoForecastService,
@@ -68,14 +73,17 @@ class CheckpointWeatherService:
             _with_weather(checkpoint, hours_by_location.get(location, {}), departure_time)
             for checkpoint, location in zip(checkpoints, location_of, strict=True)
         )
-        warnings = ()
+        warnings = []
         if failures:
-            warnings = (
+            warnings.append(
                 f"Weather forecasts could not be retrieved for {failed_count} of "
                 f"{len(locations)} checkpoint locations ({failures[0].message.rstrip('.')}). "
-                "Conditions there are UNKNOWN.",
+                "Conditions there are UNKNOWN."
             )
-        return CheckpointWeatherResult(updated, warnings)
+        horizon_warning = _beyond_horizon_warning(updated, self._forecasts.forecast_horizon_end())
+        if horizon_warning:
+            warnings.append(horizon_warning)
+        return CheckpointWeatherResult(updated, tuple(warnings))
 
     def _fetch(
         self, locations: list[Coordinate], start: datetime, end: datetime
@@ -107,6 +115,30 @@ class CheckpointWeatherService:
         if failures and not hours_by_location:
             raise failures[0]
         return hours_by_location, failures, failed_count
+
+
+def _beyond_horizon_warning(checkpoints: Sequence[Checkpoint], horizon_end: datetime) -> str | None:
+    """A warning when checkpoint ETAs, or forecast-slider hours, fall after the last hour the
+    provider forecasts. Those values are UNKNOWN because no forecast exists yet, not because
+    a request failed."""
+    limit = f"{horizon_end:%Y-%m-%d %H:%M} UTC"
+    late = sum(nearest_forecast_hour(cp.estimated_arrival_time) > horizon_end for cp in checkpoints)
+    if late:
+        return (
+            f"Weather forecasts are only available until {limit} (about "
+            f"{FORECAST_HORIZON_DAYS} days ahead). {late} of {len(checkpoints)} checkpoints "
+            "are reached after that, so their weather and risk are UNKNOWN."
+        )
+    if any(
+        nearest_forecast_hour(entry.target_time) > horizon_end
+        for cp in checkpoints
+        for entry in cp.hourly_forecasts
+    ):
+        return (
+            f"Weather forecasts are only available until {limit}. Forecast slider hours "
+            "after that are UNKNOWN."
+        )
+    return None
 
 
 def _shared_locations(checkpoints: Sequence[Checkpoint]) -> tuple[list[Coordinate], list[int]]:
