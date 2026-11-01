@@ -11,5 +11,5 @@ export function checkpointName(checkpoints: Checkpoint[], checkpoint: Checkpoint
 }
 
 export function checkpointTitle(checkpoints: Checkpoint[], checkpoint: Checkpoint): string {
-  return `${checkpointName(checkpoints, checkpoint)} · ${formatMiles(checkpoint.distance_from_origin_miles)}`
+  return `${checkpointName(checkpoints, checkpoint)} at ${formatMiles(checkpoint.distance_from_origin_miles)}`
 }
