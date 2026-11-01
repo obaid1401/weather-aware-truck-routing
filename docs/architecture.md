@@ -186,25 +186,25 @@ weather-aware-truck-routing/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── app/
-│   │   ├── features/
+│   │   ├── app/                 Providers, configuration, pages
+│   │   ├── features/            One folder per feature, each with only the
+│   │   │   │                    subfolders it uses: api/, components/, hooks/,
+│   │   │   │                    schemas/, services/, store/, types/
+│   │   │   ├── analysis/
 │   │   │   ├── trip/
 │   │   │   ├── routing/
 │   │   │   ├── checkpoints/
 │   │   │   ├── weather/
 │   │   │   ├── risk/
+│   │   │   ├── map/
 │   │   │   └── recommendation/
 │   │   │
-│   │   ├── components/
-│   │   │   ├── common/
-│   │   │   └── layout/
-│   │   │
-│   │   ├── map/
-│   │   ├── services/
-│   │   ├── hooks/
-│   │   ├── types/
-│   │   ├── theme/
-│   │   └── utils/
+│   │   └── shared/              Cross-feature code
+│   │       ├── api/
+│   │       ├── components/
+│   │       ├── theme/
+│   │       ├── utils/
+│   │       └── test/
 │   │
 │   ├── package.json
 │   └── .env.example
@@ -760,7 +760,27 @@ Implementation notes (`api/serializers/analysis.py`, `api/views/analyze.py`):
 
 ## 13. Frontend Architecture
 
-Organize frontend code by feature.
+Organize frontend code by feature, in a modular structure:
+
+- `app/`: application setup only: providers, the Query client, configuration (`VITE_API_BASE_URL`), and pages that compose features.
+- `features/<name>/`: everything one feature owns. A feature creates only the subfolders it uses:
+  - `api/`: calls to the backend
+  - `components/`: React components
+  - `hooks/`: React hooks
+  - `schemas/`: form values and validation
+  - `services/`: non-UI logic, such as error normalization
+  - `store/`: client-side UI state, if a feature needs it
+  - `types/`: TypeScript types
+- `shared/`: code used by more than one feature: the Axios client (`shared/api`), layout and common components, the Material UI theme, formatting and date utilities, and test setup and fixtures.
+
+Features import from `shared/` and from another feature's public files where needed. `shared/` never imports from features, except test fixtures, which use the API types.
+
+### `features/analysis`
+
+- Analysis API call (`POST /api/v1/routes/analyze/`)
+- `useAnalyzeTrip` mutation hook (TanStack Query)
+- Request, response, and error types (mirror the backend serializers)
+- API error normalization (validation, ambiguous geocoding, rate limit, timeout, network)
 
 ### `features/trip`
 
@@ -788,7 +808,7 @@ Organize frontend code by feature.
 - Weather information
 - Selected forecast timestamp
 
-The slider displays backend-provided values only. It does not calculate risk or change the route ranking. The selected forecast hour also drives the weather heatmap (see `map`).
+The slider displays backend-provided values only. It does not calculate risk or change the route ranking. The selected forecast hour also drives the weather heatmap (see `features/map`).
 
 ### `features/risk`
 
@@ -802,7 +822,7 @@ The slider displays backend-provided values only. It does not calculate risk or 
 - Ranking explanation
 - Safety warnings
 
-### `map`
+### `features/map`
 
 - Map container
 - Route polylines
@@ -825,11 +845,13 @@ The heatmap is built only from data already in the analysis response, using the 
 - Accessibility: risk is shown by text labels (legend, checkpoint details), not by colour alone.
 - The heatmap is visualization only. It never changes route metrics, ranking, or the recommendation, and the frontend never calculates risk.
 
-### `services`
+### `shared`
 
-- API client
-- Request and response types
-- API error handling
+- Axios API client (`shared/api`)
+- Layout and common components
+- Material UI theme
+- Date/time and display formatting
+- Test setup and fixtures
 
 The map should receive normalized data through props. It should not communicate with external providers or calculate risk.
 

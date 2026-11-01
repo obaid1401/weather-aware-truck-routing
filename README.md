@@ -22,7 +22,8 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 - **Phase 5 (Risk Calculation):** done. Wind, rain, and snow risk with cargo-weight rules, final checkpoint and hourly risks, and route risk miles, distance-weighted average risk, and weather coverage.
 - **Phase 6 (Route Recommendation):** done. Lexicographic ranking (severe miles, high miles, average risk, travel time, then distance and provider order), explanations for every route, and NO_TRAVEL and incomplete-data warnings.
 - **Phase 7 (Backend Integration):** done. `POST /api/v1/routes/analyze/` runs the full analysis in one request and returns routes, checkpoints, weather, risks, metrics, and the recommendation.
-- **Next:** Phase 8 (Frontend Foundation). The frontend UI is not built yet.
+- **Phase 8 (Frontend Foundation):** done. Trip form with validation, loading and error states, connected to the analysis API, with a summary of the recommendation and warnings.
+- **Next:** Phase 9 (Results and Visualization): route comparison, the map, the forecast slider, and the weather heatmap.
 
 ## Documentation
 
@@ -129,7 +130,7 @@ Backend (`backend/.env`):
 | `VALHALLA_BASE_URL` | Valhalla server for truck routing; defaults to `https://valhalla1.openstreetmap.de` |
 | `ANALYZE_RATE_LIMIT` | **Required.** Analysis requests allowed per client, such as `10/minute`; startup fails if missing or invalid. Excess requests get HTTP 429 |
 
-Frontend variables are defined in Phase 8.
+Frontend (`frontend/.env`): `VITE_API_BASE_URL` is **required**, the backend URL, for example `http://127.0.0.1:8000`. See `frontend/.env.example`.
 
 ## Testing
 
@@ -142,7 +143,9 @@ ruff check .           # lint
 ruff format --check .  # check formatting
 ```
 
-Tests never call live external APIs. Frontend tests (Vitest and React Testing Library) are added in Phase 8.
+Tests never call live external APIs.
+
+Frontend, from `frontend/`: `npm test` (Vitest and React Testing Library), `npm run lint`, and `npm run build`.
 
 CI runs Ruff, `manage.py check`, and Pytest for the backend, and a production build for the frontend, on pushes and pull requests to `main`.
 
