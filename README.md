@@ -103,7 +103,24 @@ curl -X POST http://127.0.0.1:8000/api/v1/routes/analyze/ \
 
 The departure time must include a UTC offset and must not be in the past. The full response shape is described in [`docs/architecture.md`](docs/architecture.md) (§12) and in Swagger UI.
 
-`requirements.txt` holds runtime dependencies only (used for deployment). `requirements-dev.txt` adds Pytest, pytest-django, pytest-cov, and Ruff.
+`requirements.txt` holds runtime dependencies only (used for deployment), including Gunicorn, the production server. `requirements-dev.txt` adds Pytest, pytest-django, pytest-cov, and Ruff.
+
+### Backend with Docker
+
+`backend/Dockerfile` builds the production image: Python 3.12, runtime dependencies only, and Gunicorn serving `config.wsgi`. The image contains no secrets: `.dockerignore` keeps `.env`, tests, and local tooling out, and every setting is read from the environment when the container starts.
+
+Build and run it locally (Docker Desktop or Docker Engine), from `backend/`:
+
+```bash
+docker build -t weather-aware-truck-routing-api .
+docker run --rm -p 8000:8000 --env-file .env -e PORT=8000 -e DJANGO_DEBUG=False weather-aware-truck-routing-api
+```
+
+The API is then at `http://localhost:8000/api/health/`. `--env-file .env` passes the same variables as local development (see [Environment Variables](#environment-variables)); `-e` values take precedence over the file. `PORT` is required: Gunicorn binds to it and fails clearly if it is missing (Render sets it automatically).
+
+Gunicorn settings live in `backend/gunicorn.conf.py`: 2 worker processes with 4 threads each, and a 120-second timeout, longer than the frontend's 90-second wait for an analysis. Override them without rebuilding through Gunicorn's `GUNICORN_CMD_ARGS` variable, for example `-e GUNICORN_CMD_ARGS="--workers 1"`. The analysis rate limit is counted per worker process, so with 2 workers a client can make up to twice `ANALYZE_RATE_LIMIT`.
+
+The API serves JSON only, and Swagger UI loads its scripts from a CDN, so there are no static files to serve and no static-file middleware (such as WhiteNoise) is needed.
 
 ### Frontend
 
@@ -152,7 +169,32 @@ CI runs Ruff, `manage.py check`, and Pytest for the backend, and ESLint, the Vit
 
 ## Deployment
 
-Deployment instructions will be added in Phase 10. The frontend and backend will be deployed separately on free-tier hosting.
+The frontend and backend are deployed separately on free-tier hosting. Frontend deployment instructions will be added in Phase 10.
+
+### Backend on Render (Docker)
+
+Create a Render **Web Service** from this repository with:
+
+| Setting | Value |
+|---|---|
+| Language / Runtime | Docker |
+| Root Directory | `backend` |
+| Dockerfile Path | `./Dockerfile` |
+| Health Check Path | `/api/health/` |
+
+Environment variables (set in the Render dashboard, never in the repository):
+
+| Variable | Value |
+|---|---|
+| `DJANGO_SECRET_KEY` | A new random key (see `backend/.env.example`) |
+| `DJANGO_DEBUG` | `False` |
+| `DJANGO_ALLOWED_HOSTS` | The service host name, for example `your-service.onrender.com` |
+| `CORS_ALLOWED_ORIGINS` | The deployed frontend origin, for example `https://your-frontend.example` |
+| `ORS_API_KEY` | Your OpenRouteService key |
+| `ANALYZE_RATE_LIMIT` | For example `10/minute` |
+| `VALHALLA_BASE_URL` | Optional; defaults to the public FOSSGIS server |
+
+Render sets `PORT` itself and terminates HTTPS in front of the container. Free instances sleep when idle, so the first request after a pause is slow while the service starts.
 
 ## External Service Terms
 

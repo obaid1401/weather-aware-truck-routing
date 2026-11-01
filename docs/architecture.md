@@ -1014,12 +1014,13 @@ Deployment requirements:
 
 Free hosting providers may impose sleeping, cold starts, or usage limits. Verify current terms before selecting a provider.
 
-Production serving requirements (to be selected and approved before deployment; not installed yet):
+Production serving (approved for deployment on Render):
 
-- A production WSGI server. Do not use Django's development server in deployment.
-- Static-file handling for collected static files (for example, DRF and API documentation assets) when `DEBUG` is off.
+- The backend is deployed as a Docker image built from `backend/Dockerfile` (Python 3.12 slim, runtime dependencies from `requirements.txt` only, running as an unprivileged user). `.dockerignore` keeps `.env`, tests, and local tooling out of the image; all configuration is read from the environment at run time.
+- Gunicorn is the WSGI server (`backend/gunicorn.conf.py`): it binds to the `PORT` environment variable, which is required, and uses threaded workers (2 processes × 4 threads) with a 120-second timeout so that slow provider calls do not block health checks or cut an analysis short. Django's development server is never used in deployment.
+- Static files: none are served. The API renders JSON only and Swagger UI loads its assets from a CDN, so no static-file handling (such as WhiteNoise) is needed.
 
-Install only `requirements.txt` in production. Docker is not used.
+Install only `requirements.txt` in production.
 
 ## 19. Architecture Decisions
 

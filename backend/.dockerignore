@@ -1,0 +1,22 @@
+# Keep secrets, local tooling, and test-only files out of the Docker build context.
+
+# Secrets and local configuration: the container gets its settings from the environment.
+.env
+.env.*
+
+# Local Python environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Tests and development-only dependencies are not needed to run the API.
+**/tests/
+requirements-dev.txt
+
+# Docker files themselves
+Dockerfile
+.dockerignore
