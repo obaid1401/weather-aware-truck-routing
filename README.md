@@ -23,7 +23,8 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 - **Phase 6 (Route Recommendation):** done. Lexicographic ranking (severe miles, high miles, average risk, travel time, then distance and provider order), explanations for every route, and NO_TRAVEL and incomplete-data warnings.
 - **Phase 7 (Backend Integration):** done. `POST /api/v1/routes/analyze/` runs the full analysis in one request and returns routes, checkpoints, weather, risks, metrics, and the recommendation.
 - **Phase 8 (Frontend Foundation):** done. Trip form with validation, loading and error states, connected to the analysis API, with a summary of the recommendation and warnings.
-- **Next:** Phase 9 (Results and Visualization): route comparison, the map, the forecast slider, and the weather heatmap.
+- **Phase 9 (Results and Visualization):** done. Route comparison in ranked order, an interactive map with every route, risk-coloured checkpoints, checkpoint details, a 0–48-hour forecast slider, and a weather heatmap along the selected route, with a legend that labels every risk level.
+- **Next:** Phase 10 (Testing and Delivery).
 
 ## Documentation
 
@@ -147,7 +148,7 @@ Tests never call live external APIs.
 
 Frontend, from `frontend/`: `npm test` (Vitest and React Testing Library), `npm run lint`, and `npm run build`.
 
-CI runs Ruff, `manage.py check`, and Pytest for the backend, and a production build for the frontend, on pushes and pull requests to `main`.
+CI runs Ruff, `manage.py check`, and Pytest for the backend, and ESLint, the Vitest tests, and a production build for the frontend, on pushes and pull requests to `main`.
 
 ## Deployment
 

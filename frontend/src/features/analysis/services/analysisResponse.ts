@@ -19,7 +19,60 @@ const isTimestamp = (value: unknown): value is string =>
 const isStringList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every(isString)
 
-const isLocation = (value: unknown) => isRecord(value) && isString(value.label)
+const isNumberOrNull = (value: unknown) => value === null || isNumber(value)
+const isTimestampOrNull = (value: unknown) => value === null || isTimestamp(value)
+const oneOf =
+  (...allowed: string[]) =>
+  (value: unknown) =>
+    isString(value) && allowed.includes(value)
+
+const isRisk = oneOf('LOW', 'MODERATE', 'HIGH', 'SEVERE', 'NO_TRAVEL', 'UNKNOWN')
+const isDataStatus = oneOf('AVAILABLE', 'PARTIAL', 'UNAVAILABLE')
+
+const isLocation = (value: unknown) =>
+  isRecord(value) && isString(value.label) && isNumber(value.latitude) && isNumber(value.longitude)
+
+const isTrip = (value: unknown) =>
+  isRecord(value) && isTimestamp(value.departure_time) && isNumber(value.checkpoint_interval_miles)
+
+/** A forecast with its factor risks: the shape shared by checkpoints and hourly entries. */
+const isForecast = (value: Record<string, unknown>) =>
+  isTimestampOrNull(value.forecast_timestamp) &&
+  isNumberOrNull(value.wind_speed_mph) &&
+  isNumberOrNull(value.precipitation_inches_per_hour) &&
+  isNumberOrNull(value.snowfall_inches_per_hour) &&
+  isDataStatus(value.data_status) &&
+  isRisk(value.wind_risk) &&
+  isRisk(value.rain_risk) &&
+  isRisk(value.snow_risk) &&
+  isRisk(value.final_risk)
+
+const isHourlyForecast = (value: unknown) =>
+  isRecord(value) && isNumber(value.hour_offset) && isTimestamp(value.target_time) && isForecast(value)
+
+const isCheckpoint = (value: unknown) =>
+  isRecord(value) &&
+  isString(value.id) &&
+  isNumber(value.distance_from_origin_miles) &&
+  isNumber(value.latitude) &&
+  isNumber(value.longitude) &&
+  isTimestamp(value.estimated_arrival_time) &&
+  isForecast(value) &&
+  isStringList(value.warnings) &&
+  Array.isArray(value.hourly_forecasts) &&
+  value.hourly_forecasts.every(isHourlyForecast)
+
+const isLatLng = (value: unknown) =>
+  Array.isArray(value) && value.length === 2 && isNumber(value[0]) && isNumber(value[1])
+
+const isMetrics = (value: unknown) =>
+  isRecord(value) &&
+  isNumber(value.severe_miles) &&
+  isNumber(value.high_miles) &&
+  isNumber(value.no_travel_miles) &&
+  isNumber(value.unknown_miles) &&
+  isNumberOrNull(value.average_risk_score) &&
+  isNumber(value.weather_coverage_percent)
 
 const isRoute = (value: unknown) =>
   isRecord(value) &&
@@ -28,8 +81,11 @@ const isRoute = (value: unknown) =>
   isNumber(value.distance_miles) &&
   isNumber(value.duration_seconds) &&
   isTimestamp(value.estimated_arrival_time) &&
-  isRecord(value.metrics) &&
-  isNumber(value.metrics.weather_coverage_percent)
+  Array.isArray(value.geometry) &&
+  value.geometry.every(isLatLng) &&
+  isMetrics(value.metrics) &&
+  Array.isArray(value.checkpoints) &&
+  value.checkpoints.every(isCheckpoint)
 
 const isRecommendation = (value: unknown) =>
   value === null ||
@@ -38,11 +94,14 @@ const isRecommendation = (value: unknown) =>
     isStringList(value.ranking_reasons) &&
     isStringList(value.warnings))
 
-/** Checks, at runtime, the response fields the UI displays, so a malformed response becomes a
- * clear error instead of a crash. The full shape is described by TripAnalysisResponse. */
+/** Checks, at runtime, the response fields the UI displays (summary, route comparison, map,
+ * checkpoint details, and forecast slider), so a malformed response, or a risk level the UI
+ * does not know, becomes a clear error instead of a crash or a wrong colour. The full shape is
+ * described by TripAnalysisResponse. */
 export function parseAnalysisResponse(data: unknown): TripAnalysisResponse {
   if (!isRecord(data)) throw new InvalidAnalysisResponseError(['body'])
   const checks: Record<string, boolean> = {
+    trip: isTrip(data.trip),
     origin: isLocation(data.origin),
     destination: isLocation(data.destination),
     routes: Array.isArray(data.routes) && data.routes.every(isRoute),

@@ -23,6 +23,20 @@ export function formatDateTime(iso: string): string {
   }).format(new Date(iso))
 }
 
+/** Weekday and time with the time zone name, for narrow table cells. */
+export function formatShortDateTime(iso: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date(iso))
+}
+
+export function formatPounds(pounds: number): string {
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(pounds)} lb`
+}
+
 /** Rounded down, so incomplete coverage is never shown as 100%. */
 export function formatPercent(value: number): string {
   const tenths = Math.floor(value * 10 + 1e-9) / 10

@@ -15,5 +15,8 @@ export default defineConfig({
       TZ: 'America/Denver',
     },
     css: false,
+    // Form tests type through user-event and render MUI and Leaflet in jsdom; with test files
+    // running in parallel some take about 4 seconds, close to the 5-second default.
+    testTimeout: 15_000,
   },
 })

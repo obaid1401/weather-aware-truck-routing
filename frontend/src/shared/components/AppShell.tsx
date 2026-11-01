@@ -1,29 +1,36 @@
-import AppBar from '@mui/material/AppBar'
 import Box from '@mui/material/Box'
-import Container from '@mui/material/Container'
-import Toolbar from '@mui/material/Toolbar'
-import Typography from '@mui/material/Typography'
 import type { ReactNode } from 'react'
 
+import { tokens } from '../theme/theme'
+
+/** The page frame: a skip link and the main landmark. The page lays out its own header so the
+ * map can use the full height of the window. */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <AppBar position="static" color="primary">
-        <Toolbar>
-          <Typography variant="h1" component="h1">
-            Weather-Aware Truck Routing
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      <Container component="main" maxWidth="lg" sx={{ flex: 1, py: { xs: 3, md: 5 } }}>
-        {children}
-      </Container>
-      <Box component="footer" sx={{ py: 2, textAlign: 'center' }}>
-        <Typography variant="caption" color="text.secondary">
-          Forecast-based estimates for planning, not live conditions. Routing by Valhalla,
-          geocoding by OpenRouteService, weather by Open-Meteo.
-        </Typography>
+    <>
+      <Box
+        component="a"
+        href="#main"
+        sx={{
+          position: 'absolute',
+          left: 8,
+          top: -48,
+          zIndex: 2000,
+          px: 2,
+          py: 1,
+          bgcolor: tokens.shieldBlue,
+          color: '#fff',
+          fontWeight: 700,
+          borderRadius: 1,
+          textDecoration: 'none',
+          '&:focus': { top: 8 },
+        }}
+      >
+        Skip to trip planner
       </Box>
-    </Box>
+      <Box component="main" id="main" tabIndex={-1} sx={{ outline: 'none' }}>
+        {children}
+      </Box>
+    </>
   )
 }

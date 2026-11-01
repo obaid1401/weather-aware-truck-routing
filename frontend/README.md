@@ -7,7 +7,8 @@ The frontend only displays data from the backend. It never calls OpenRouteServic
 ## Status
 
 - **Phase 8 (Frontend Foundation):** done. Trip form with validation, loading and error states, connected to `POST /api/v1/routes/analyze/`, with a summary of the recommendation and all warnings.
-- **Next:** Phase 9 (Results and Visualization): route comparison, the interactive map, the forecast slider, and the weather heatmap.
+- **Phase 9 (Results and Visualization):** done. Route comparison in the backend's ranked order, an interactive map (routes, origin and destination, risk-coloured checkpoints), checkpoint details, a 0–48-hour forecast slider, and a weather heatmap along the selected route. Changing the route, checkpoint, or hour never sends a request.
+- **Next:** Phase 10 (Testing and Delivery).
 
 ## Stack
 
@@ -16,7 +17,7 @@ The frontend only displays data from the backend. It never calls OpenRouteServic
 - TanStack Query for the analysis request
 - Axios as the HTTP client
 - Vitest and React Testing Library for tests
-- React Leaflet and Leaflet (used from Phase 9)
+- React Leaflet and Leaflet, with OpenStreetMap tiles
 
 ## Getting Started
 
@@ -55,7 +56,9 @@ Copy `.env.example` to `.env`. Never put API keys or other secrets here: anythin
 src/
 ├── main.tsx
 ├── app/                     App, providers, configuration
-│   └── pages/               TripAnalysisPage (composes the features)
+│   └── pages/               TripAnalysisPage and AnalysisResults (compose the features and hold
+│                            the selected route, checkpoint, and forecast hour), ForecastPanel,
+│                            and workspace (the page layout)
 ├── features/
 │   ├── analysis/
 │   │   ├── api/             analyzeTrip (POST /api/v1/routes/analyze/)
@@ -63,17 +66,39 @@ src/
 │   │   ├── services/        analysisResponse: runtime response checks; apiProblem: error normalization
 │   │   └── types/           Request, response, and error types (mirror the backend serializers)
 │   ├── trip/
-│   │   ├── components/      TripForm
+│   │   ├── components/      TripForm, TripSummary
 │   │   └── schemas/         tripFormSchema: form values and validation
-│   └── recommendation/
-│       └── components/      AnalysisSummary (recommendation and warnings)
+│   ├── recommendation/
+│   │   └── components/      AnalysisSummary (recommendation and warnings)
+│   ├── routing/
+│   │   ├── components/      RouteComparison (route cards), RouteRiskBar (backend miles by risk)
+│   │   └── services/        rankedRoutes: routes in the backend's ranked order
+│   ├── checkpoints/
+│   │   ├── components/      CheckpointList, CheckpointDetails, RouteStrip (strip map)
+│   │   └── services/        checkpointLabel: Origin / Checkpoint n / Destination
+│   ├── weather/
+│   │   ├── components/      ForecastSlider
+│   │   └── services/        hourlyForecast: the backend's entry for a slider hour
+│   ├── risk/
+│   │   ├── components/      RiskBadge, RiskScale, RiskLegend
+│   │   └── services/        riskDisplay: label and colour for each backend risk level
+│   └── map/
+│       ├── components/      RouteMap (React Leaflet), BaseMap, MapKey
+│       └── services/        mapStyles: line, marker, and heatmap circle styles; baseMap: tiles
 └── shared/
     ├── api/                 Axios client
     ├── components/          AppShell, ConfigurationErrorScreen
-    ├── theme/               Material UI theme
-    ├── utils/               Date/time and display formatting
+    ├── theme/               Material UI theme, design tokens, and the self-hosted Overpass font
+    ├── utils/               Date/time and display formatting, visually hidden text
     └── test/                Vitest setup and fixtures
 ```
+
+## Layout and Visual Design
+
+- **Map first.** A navy header, then on wide screens a column of white panels on the left and the map filling the rest of the window, in view while the panels scroll. The forecast panel floats over the bottom of the map: the slider hour (time) beside a strip map of the selected route (distance), one tick per checkpoint coloured by the backend's risk for that hour. The panel is at most half the map's height, and the map keeps the routes above it. "How to read the map" opens the full map key as a pop-up. On narrow screens the page stacks: trip, map and forecast panel, then results.
+- **Panels.** After an analysis the form folds into a trip summary ("Edit trip" reopens it with the entered values). The verdict panel shows the recommended route, its key figures, safety warnings, and why it was chosen. Below it, two tabs: **Routes** (one card per route in ranked order, each with a bar of the backend's miles by risk level and every metric) and **Checkpoints** (one table comparing a checkpoint's forecast at arrival with the selected hour, and the full list). Choosing a checkpoint on the map or strip opens its details.
+- **Type.** Overpass, an open-source typeface derived from Highway Gothic (US road-sign lettering), self-hosted under the SIL Open Font License (`src/shared/theme/fonts/OFL.txt`). Numbers use tabular figures.
+- **Colour.** Navy header, white rounded panels on a light blue-grey background, and one interface blue for buttons, focus, selection, and the selected route. Risk colours are used only for risk, and every risk colour has a text label.
 
 Each feature has only the subfolders it uses (`api/`, `components/`, `hooks/`, `schemas/`, `services/`, `store/`, `types/`). Code used by more than one feature goes in `shared/`. Tests sit next to the file they test.
 
