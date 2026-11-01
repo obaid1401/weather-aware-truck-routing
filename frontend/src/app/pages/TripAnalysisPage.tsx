@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography'
 import { AnalysisSummary } from '../../features/recommendation/components/AnalysisSummary'
 import { TripForm } from '../../features/trip/components/TripForm'
 import { useAnalyzeTrip } from '../../features/analysis/hooks/useAnalyzeTrip'
+import { AnalysisResults } from './AnalysisResults'
 
 const panel = {
   p: { xs: 2.5, sm: 3.5 },
@@ -48,6 +49,13 @@ export function TripAnalysisPage() {
           </Box>
         )}
       </Paper>
+
+      {analysis.isSuccess && (
+        <Box sx={{ gridColumn: '1 / -1', minWidth: 0 }}>
+          {/* A new analysis starts with fresh selections. */}
+          <AnalysisResults key={analysis.submittedAt} analysis={analysis.data} />
+        </Box>
+      )}
     </Box>
   )
 }

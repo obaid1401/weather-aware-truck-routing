@@ -22,7 +22,7 @@ export interface TripAnalysisRequest {
   checkpoint_interval_miles: CheckpointIntervalMiles
 }
 
-interface WeatherFields {
+export interface WeatherFields {
   forecast_timestamp: string | null
   wind_speed_mph: number | null
   precipitation_inches_per_hour: number | null
@@ -30,7 +30,7 @@ interface WeatherFields {
   data_status: DataStatus
 }
 
-interface RiskFields {
+export interface RiskFields {
   wind_risk: RiskLevel
   rain_risk: RiskLevel
   snow_risk: RiskLevel
