@@ -845,6 +845,12 @@ The heatmap is built only from data already in the analysis response, using the 
 - Accessibility: risk is shown by text labels (legend, checkpoint details), not by colour alone.
 - The heatmap is visualization only. It never changes route metrics, ranking, or the recommendation, and the frontend never calculates risk.
 
+Implementation notes (`features/map/`):
+
+- Checkpoint markers keep the risk at each checkpoint's estimated arrival (the values the ranking uses). The heatmap circles and the checkpoint details show the selected hour. The map key states this.
+- A missing hourly entry is drawn as `UNKNOWN`; a neighbouring hour or checkpoint is never used.
+- Layers use panes so the stacking is fixed: heatmap, then alternate routes, then the selected route, then checkpoint markers on top. Only the selected route's checkpoints and heatmap are drawn.
+
 ### `shared`
 
 - Axios API client (`shared/api`)

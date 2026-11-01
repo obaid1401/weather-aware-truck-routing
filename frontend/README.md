@@ -7,7 +7,8 @@ The frontend only displays data from the backend. It never calls OpenRouteServic
 ## Status
 
 - **Phase 8 (Frontend Foundation):** done. Trip form with validation, loading and error states, connected to `POST /api/v1/routes/analyze/`, with a summary of the recommendation and all warnings.
-- **Next:** Phase 9 (Results and Visualization): route comparison, the interactive map, the forecast slider, and the weather heatmap.
+- **Phase 9 (Results and Visualization):** done. Route comparison in the backend's ranked order, an interactive map (routes, origin and destination, risk-coloured checkpoints), checkpoint details, a 0–48-hour forecast slider, and a weather heatmap along the selected route. Changing the route, checkpoint, or hour never sends a request.
+- **Next:** Phase 10 (Testing and Delivery).
 
 ## Stack
 
@@ -16,7 +17,7 @@ The frontend only displays data from the backend. It never calls OpenRouteServic
 - TanStack Query for the analysis request
 - Axios as the HTTP client
 - Vitest and React Testing Library for tests
-- React Leaflet and Leaflet (used from Phase 9)
+- React Leaflet and Leaflet, with OpenStreetMap tiles
 
 ## Getting Started
 
@@ -55,7 +56,8 @@ Copy `.env.example` to `.env`. Never put API keys or other secrets here: anythin
 src/
 ├── main.tsx
 ├── app/                     App, providers, configuration
-│   └── pages/               TripAnalysisPage (composes the features)
+│   └── pages/               TripAnalysisPage and AnalysisResults (compose the features and hold
+│                            the selected route, checkpoint, and forecast hour)
 ├── features/
 │   ├── analysis/
 │   │   ├── api/             analyzeTrip (POST /api/v1/routes/analyze/)
@@ -65,8 +67,23 @@ src/
 │   ├── trip/
 │   │   ├── components/      TripForm
 │   │   └── schemas/         tripFormSchema: form values and validation
-│   └── recommendation/
-│       └── components/      AnalysisSummary (recommendation and warnings)
+│   ├── recommendation/
+│   │   └── components/      AnalysisSummary (recommendation and warnings)
+│   ├── routing/
+│   │   ├── components/      RouteComparison (metrics, status, explanation, route selection)
+│   │   └── services/        rankedRoutes: routes in the backend's ranked order
+│   ├── checkpoints/
+│   │   ├── components/      CheckpointList, CheckpointDetails
+│   │   └── services/        checkpointLabel: Origin / Checkpoint n / Destination
+│   ├── weather/
+│   │   ├── components/      ForecastSlider, WeatherReadings
+│   │   └── services/        hourlyForecast: the backend's entry for a slider hour
+│   ├── risk/
+│   │   ├── components/      RiskBadge, RiskLegend
+│   │   └── services/        riskDisplay: label and colour for each backend risk level
+│   └── map/
+│       ├── components/      RouteMap (React Leaflet), MapKey
+│       └── services/        mapStyles: line, marker, and heatmap circle styles
 └── shared/
     ├── api/                 Axios client
     ├── components/          AppShell, ConfigurationErrorScreen
