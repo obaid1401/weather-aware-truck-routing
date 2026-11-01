@@ -47,11 +47,11 @@ export function RouteStrip({
 
   return (
     <Box>
-      <Typography variant="subtitle2" component="h3" sx={{ mb: 0.75 }}>
+      <Typography variant="caption" component="h3" sx={{ display: 'block', fontWeight: 700, color: 'text.secondary', mb: 0.75 }}>
         Along {routeLabel} at +{hour} h
       </Typography>
       <Typography sx={visuallyHidden}>{summary}</Typography>
-      <Box aria-hidden sx={{ position: 'relative', height: 30, mx: `${TICK_WIDTH / 2}px` }}>
+      <Box aria-hidden sx={{ position: 'relative', height: 24, mx: `${TICK_WIDTH / 2}px` }}>
         {/* The road. */}
         <Box
           sx={{
@@ -79,9 +79,9 @@ export function RouteStrip({
               sx={{
                 position: 'absolute',
                 left: `calc(${position * 100}% - ${TICK_WIDTH / 2}px)`,
-                top: selected ? 0 : 5,
+                top: selected ? 0 : 4,
                 width: TICK_WIDTH,
-                height: selected ? 30 : 20,
+                height: selected ? 24 : 16,
                 p: 0,
                 cursor: 'pointer',
                 borderRadius: '2px',
@@ -100,8 +100,9 @@ export function RouteStrip({
         sx={{
           display: 'flex',
           justifyContent: 'space-between',
-          mt: 0.5,
+          mt: 0.25,
           typography: 'caption',
+          fontSize: '0.75rem',
           color: 'text.secondary',
           fontVariantNumeric: 'tabular-nums',
         }}

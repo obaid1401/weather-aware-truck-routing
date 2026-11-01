@@ -19,7 +19,8 @@ export function RiskLegend({ title = 'Risk levels' }: { title?: string }) {
           p: 0,
           display: 'grid',
           gap: 1,
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr' },
+          // Columns follow the space the legend has, not the window width.
+          gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))',
         }}
       >
         {RISK_LEVELS.map((level) => (

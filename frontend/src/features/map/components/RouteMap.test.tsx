@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react'
 import type { ComponentProps } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { Map as LeafletMap } from 'leaflet'
+import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { multiRouteAnalysis } from '../../../shared/test/fixtures'
 import { RISK_DISPLAY } from '../../risk/services/riskDisplay'
@@ -111,5 +112,34 @@ describe('RouteMap', () => {
     const { container } = renderMap()
 
     expect(container.querySelector('.leaflet-control-attribution')).toHaveTextContent('OpenStreetMap')
+  })
+
+  describe('fitting the routes above a floating panel', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    /** The bottom padding of every fitBounds call. */
+    const bottomPadding = (fitBounds: MockInstance<LeafletMap['fitBounds']>) =>
+      fitBounds.mock.calls.map(([, options]) => (options?.paddingBottomRight as [number, number])[1])
+
+    it('refits when the space to keep clear changes', () => {
+      const fitBounds = vi.spyOn(LeafletMap.prototype, 'fitBounds')
+      const { rerender, props } = renderMap({ bottomInset: 24 })
+
+      rerender(<RouteMap {...props} bottomInset={220} />)
+
+      expect(bottomPadding(fitBounds)).toContain(220)
+    })
+
+    it('leaves the view alone once the user has moved the map', () => {
+      const fitBounds = vi.spyOn(LeafletMap.prototype, 'fitBounds')
+      const { container, rerender, props } = renderMap({ bottomInset: 24 })
+
+      fireEvent.pointerDown(container.querySelector('.leaflet-container')!)
+      rerender(<RouteMap {...props} bottomInset={260} />)
+
+      expect(bottomPadding(fitBounds)).not.toContain(260)
+    })
   })
 })

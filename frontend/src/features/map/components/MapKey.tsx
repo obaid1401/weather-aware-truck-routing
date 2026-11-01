@@ -21,6 +21,10 @@ function Swatch({ children }: { children: ReactNode }) {
 export function MapKey({ hour }: { hour: number }) {
   const items = [
     {
+      swatch: <Typography variant="caption" sx={{ fontWeight: 800 }}>+h</Typography>,
+      text: 'Forecast hour: conditions at each checkpoint at that hour, whenever the truck reaches it. Rankings always use the forecast at each checkpoint’s estimated arrival.',
+    },
+    {
       swatch: <Box sx={{ width: 24, height: 5, borderRadius: 1, bgcolor: SELECTED_ROUTE_COLOR }} />,
       text: 'Selected route (blue). Grey lines are the other routes; select one to show it.',
     },
@@ -43,12 +47,12 @@ export function MapKey({ hour }: { hour: number }) {
   ]
 
   return (
-    <Box component="section" aria-labelledby="map-key-title" sx={{ display: 'grid', gap: 2 }}>
+    <Box component="section" aria-labelledby="map-key-title" sx={{ display: 'grid', gap: 1.5 }}>
       <Box>
         <Typography variant="subtitle2" component="h3" id="map-key-title" gutterBottom>
           Map key
         </Typography>
-        <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0, display: 'grid', gap: 0.75 }}>
+        <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0, display: 'grid', gap: 0.5 }}>
           {items.map((item) => (
             <Box component="li" key={item.text} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Swatch>{item.swatch}</Swatch>

@@ -16,7 +16,7 @@ import { AnalysisSummary } from '../../features/recommendation/components/Analys
 import { RouteComparison } from '../../features/routing/components/RouteComparison'
 import { forecastHourTime } from '../../features/weather/services/hourlyForecast'
 import { visuallyHidden } from '../../shared/utils/visuallyHidden'
-import { ForecastPanel } from './ForecastPanel'
+import { FLOATING_PANEL_BOTTOM, ForecastPanel } from './ForecastPanel'
 import { Column, MapFrame, Panel, Stage } from './workspace'
 
 type ResultsTab = 'routes' | 'checkpoints'
@@ -32,10 +32,11 @@ export function AnalysisResults({ analysis }: { analysis: TripAnalysisResponse }
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null)
   const [hour, setHour] = useState(0)
   const [tab, setTab] = useState<ResultsTab>('routes')
+  // Measured height of the forecast panel floating over the map.
+  const [panelHeight, setPanelHeight] = useState<number | null>(null)
   const theme = useTheme()
   // The forecast panel floats over the bottom of the map on wide screens: keep routes clear of it.
   const panelOverMap = useMediaQuery(theme.breakpoints.up('md'))
-  const panelBesideStrip = useMediaQuery(theme.breakpoints.up('lg'))
   const revealDetails = useRef(false)
 
   useEffect(() => {
@@ -97,7 +98,8 @@ export function AnalysisResults({ analysis }: { analysis: TripAnalysisResponse }
             selectedCheckpointId={checkpoint?.id ?? null}
             hour={hour}
             checkpointIntervalMiles={trip.checkpoint_interval_miles}
-            bottomInset={panelOverMap ? (panelBesideStrip ? 240 : 340) : 24}
+            // Keep the routes above the floating panel (estimated until it has been measured).
+            bottomInset={panelOverMap ? (panelHeight ?? 160) + FLOATING_PANEL_BOTTOM + 16 : 24}
             onSelectRoute={selectRoute}
             onSelectCheckpoint={selectCheckpoint}
           />
@@ -109,6 +111,7 @@ export function AnalysisResults({ analysis }: { analysis: TripAnalysisResponse }
           onHourChange={setHour}
           selectedCheckpointId={checkpoint?.id ?? null}
           onSelectCheckpoint={selectCheckpoint}
+          onHeightChange={setPanelHeight}
         />
       </Stage>
 

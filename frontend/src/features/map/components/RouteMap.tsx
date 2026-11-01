@@ -1,7 +1,18 @@
 import 'leaflet/dist/leaflet.css'
 
-import { divIcon, latLngBounds, type LatLngExpression } from 'leaflet'
-import { Circle, CircleMarker, MapContainer, Marker, Pane, Polyline, TileLayer, Tooltip } from 'react-leaflet'
+import { divIcon, latLngBounds, type LatLngBounds, type LatLngExpression } from 'leaflet'
+import { useEffect, useMemo, useRef } from 'react'
+import {
+  Circle,
+  CircleMarker,
+  MapContainer,
+  Marker,
+  Pane,
+  Polyline,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from 'react-leaflet'
 
 import type { AnalyzedRoute, GeocodedLocation } from '../../analysis/types/api'
 import { checkpointName } from '../../checkpoints/services/checkpointLabel'
@@ -50,6 +61,34 @@ function endpointIcon(letter: string) {
 const ORIGIN_ICON = endpointIcon('A')
 const DESTINATION_ICON = endpointIcon('B')
 
+/** Keeps every route in view and clear of the panel floating over the bottom of the map: refits
+ * when that panel's height changes, until the user pans, zooms, or clicks the map themselves. */
+function FitRoutes({ bounds, bottomInset }: { bounds: LatLngBounds; bottomInset: number }) {
+  const map = useMap()
+  const userMoved = useRef(false)
+
+  useEffect(() => {
+    const container = map.getContainer()
+    const markMoved = () => {
+      userMoved.current = true
+    }
+    const events = ['pointerdown', 'wheel', 'keydown'] as const
+    events.forEach((name) => container.addEventListener(name, markMoved))
+    return () => events.forEach((name) => container.removeEventListener(name, markMoved))
+  }, [map])
+
+  useEffect(() => {
+    if (userMoved.current) return
+    map.fitBounds(bounds, {
+      paddingTopLeft: [24, 24],
+      paddingBottomRight: [24, bottomInset],
+      animate: false,
+    })
+  }, [map, bounds, bottomInset])
+
+  return null
+}
+
 /** Routes, checkpoints, and the weather heatmap on an OpenStreetMap base map. Shows data from
  * the analysis response only: it never requests data or calculates risk. */
 export function RouteMap({
@@ -68,7 +107,16 @@ export function RouteMap({
   const alternates = routes.filter((route) => route !== selectedRoute)
   const originPoint: LatLngExpression = [origin.latitude, origin.longitude]
   const destinationPoint: LatLngExpression = [destination.latitude, destination.longitude]
-  const bounds = latLngBounds([originPoint, destinationPoint, ...routes.flatMap((r) => r.geometry)])
+  // Stable for one analysis, so the map is refitted only when the inset changes.
+  const bounds = useMemo(
+    () =>
+      latLngBounds([
+        [origin.latitude, origin.longitude],
+        [destination.latitude, destination.longitude],
+        ...routes.flatMap((r) => r.geometry),
+      ]),
+    [routes, origin, destination],
+  )
   const radius = heatmapRadiusMeters(checkpointIntervalMiles)
 
   return (
@@ -79,6 +127,7 @@ export function RouteMap({
       style={{ height: '100%', width: '100%' }}
     >
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
+      <FitRoutes bounds={bounds} bottomInset={bottomInset} />
 
       {/* Heatmap below the route lines; checkpoints above them. */}
       <Pane name="weather-heatmap" style={{ zIndex: 350 }}>

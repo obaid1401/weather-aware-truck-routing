@@ -115,17 +115,34 @@ describe('AnalysisResults', () => {
     expect(container.querySelector('path.checkpoint-marker.selected')).toHaveClass('risk-moderate')
   })
 
-  it('opens the map key, which explains markers, circles, and unavailable data', async () => {
+  it('opens the map key as a labelled dialog, which explains markers, circles, and unavailable data', async () => {
     const { user } = renderResults()
     const toggle = screen.getByRole('button', { name: 'How to read the map' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).not.toHaveAttribute('aria-controls')
 
     await user.click(toggle)
 
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    const key = within(screen.getByRole('region', { name: 'Map key' }))
+    const dialog = screen.getByRole('dialog', { name: 'Map key' })
+    expect(toggle).toHaveAttribute('aria-controls', dialog.id)
+    const key = within(dialog)
     expect(key.getByText(/Checkpoint marker: risk at the estimated arrival/)).toBeInTheDocument()
     expect(key.getByText(/not blended or interpolated between checkpoints/)).toBeInTheDocument()
     expect(key.getByText(/forecast unavailable, so the risk is unknown/i)).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('always says that the forecast hour does not change the ranking, and labels the strip with the hour', () => {
+    renderResults()
+
+    expect(
+      screen.getByText('Changes the map colours only. Rankings use the forecast at each checkpoint’s arrival.'),
+    ).toBeVisible()
+    fireEvent.change(screen.getByRole('slider'), { target: { value: 12 } })
+    expect(screen.getByRole('heading', { name: 'Along Route A at +12 h' })).toBeInTheDocument()
   })
 })
