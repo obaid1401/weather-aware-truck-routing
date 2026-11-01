@@ -2,12 +2,13 @@ import type { PathOptions } from 'leaflet'
 
 import type { RiskLevel } from '../../analysis/types/api'
 import { RISK_DISPLAY } from '../../risk/services/riskDisplay'
+import { tokens } from '../../../shared/theme/theme'
 
 const METERS_PER_MILE = 1609.344
 const UNKNOWN_OUTLINE = '#616161'
 
-export const SELECTED_ROUTE_COLOR = '#1d4f7a'
-export const ALTERNATE_ROUTE_COLOR = '#64748b'
+export const SELECTED_ROUTE_COLOR = tokens.shieldBlue
+export const ALTERNATE_ROUTE_COLOR = '#6b7783'
 
 /** Heatmap circles are about half the checkpoint interval in radius, so neighbouring circles
  * touch and form a band along the corridor without implying data between checkpoints. */
@@ -36,7 +37,7 @@ export function checkpointMarkerStyle(risk: RiskLevel, selected: boolean): PathO
   return {
     fillColor: RISK_DISPLAY[risk].color,
     fillOpacity: 1,
-    color: selected ? '#1a2230' : unknown ? UNKNOWN_OUTLINE : '#ffffff',
+    color: selected ? tokens.ink : unknown ? UNKNOWN_OUTLINE : '#ffffff',
     weight: selected ? 3 : 2,
     dashArray: unknown && !selected ? '3 2' : undefined,
     className: `checkpoint-marker risk-${risk.toLowerCase()}${selected ? ' selected' : ''}`,

@@ -7,6 +7,8 @@ import type { AnalyzedRoute, GeocodedLocation } from '../../analysis/types/api'
 import { checkpointName } from '../../checkpoints/services/checkpointLabel'
 import { RISK_DISPLAY } from '../../risk/services/riskDisplay'
 import { forecastAtHour } from '../../weather/services/hourlyForecast'
+import { tokens } from '../../../shared/theme/theme'
+import { OSM_ATTRIBUTION, OSM_TILE_URL } from '../services/baseMap'
 import {
   ALTERNATE_ROUTE_COLOR,
   SELECTED_ROUTE_COLOR,
@@ -24,27 +26,29 @@ interface RouteMapProps {
   /** Hour after departure selected on the forecast slider; colours the heatmap. */
   hour: number
   checkpointIntervalMiles: number
+  /** Space to keep clear at the bottom when fitting the routes, for a panel floating over the
+   * map. */
+  bottomInset?: number
   onSelectRoute: (routeId: string) => void
   onSelectCheckpoint: (checkpointId: string) => void
 }
 
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-
-function endpointIcon(letter: string, color: string) {
+// Origin and destination are square, ink-coloured signs: never a risk colour, and a different
+// shape from the round checkpoint markers.
+function endpointIcon(letter: string) {
   return divIcon({
     className: 'route-endpoint',
     html:
-      `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;` +
-      `border-radius:50%;background:${color};color:#fff;font:700 14px system-ui,sans-serif;` +
-      `border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${letter}</span>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+      `<span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;` +
+      `border-radius:4px;background:${tokens.ink};color:#fff;font:800 14px Overpass,system-ui,sans-serif;` +
+      `border:2px solid #fff;box-shadow:0 1px 3px rgba(27,37,48,.45)">${letter}</span>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
   })
 }
 
-const ORIGIN_ICON = endpointIcon('A', '#2e7d32')
-const DESTINATION_ICON = endpointIcon('B', '#1a2230')
+const ORIGIN_ICON = endpointIcon('A')
+const DESTINATION_ICON = endpointIcon('B')
 
 /** Routes, checkpoints, and the weather heatmap on an OpenStreetMap base map. Shows data from
  * the analysis response only: it never requests data or calculates risk. */
@@ -56,6 +60,7 @@ export function RouteMap({
   selectedCheckpointId,
   hour,
   checkpointIntervalMiles,
+  bottomInset = 24,
   onSelectRoute,
   onSelectCheckpoint,
 }: RouteMapProps) {
@@ -69,11 +74,11 @@ export function RouteMap({
   return (
     <MapContainer
       bounds={bounds}
-      boundsOptions={{ padding: [24, 24] }}
+      boundsOptions={{ paddingTopLeft: [24, 24], paddingBottomRight: [24, bottomInset] }}
       scrollWheelZoom={false}
       style={{ height: '100%', width: '100%' }}
     >
-      <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" attribution={OSM_ATTRIBUTION} />
+      <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
 
       {/* Heatmap below the route lines; checkpoints above them. */}
       <Pane name="weather-heatmap" style={{ zIndex: 350 }}>

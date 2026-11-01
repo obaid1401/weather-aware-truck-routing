@@ -3,7 +3,11 @@ import Typography from '@mui/material/Typography'
 import type { ReactNode } from 'react'
 
 import { RiskLegend } from '../../risk/components/RiskLegend'
+import { RISK_DISPLAY } from '../../risk/services/riskDisplay'
 import { SELECTED_ROUTE_COLOR } from '../services/mapStyles'
+
+// "Coloured by risk": a swatch of several risk colours, so no single level is implied.
+const RISK_SWATCH = `conic-gradient(${RISK_DISPLAY.LOW.color} 0 33%, ${RISK_DISPLAY.MODERATE.color} 0 66%, ${RISK_DISPLAY.SEVERE.color} 0)`
 
 function Swatch({ children }: { children: ReactNode }) {
   return (
@@ -25,13 +29,11 @@ export function MapKey({ hour }: { hour: number }) {
       text: 'Origin (A) and destination (B).',
     },
     {
-      swatch: (
-        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#c62828', border: '2px solid #fff', boxShadow: 1 }} />
-      ),
+      swatch: <Box sx={{ width: 14, height: 14, borderRadius: '50%', background: RISK_SWATCH, border: '2px solid #fff', boxShadow: 1 }} />,
       text: 'Checkpoint marker: risk at the estimated arrival, used for the ranking. Select one for details.',
     },
     {
-      swatch: <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(198, 40, 40, 0.35)' }} />,
+      swatch: <Box sx={{ width: 22, height: 22, borderRadius: '50%', background: RISK_SWATCH, opacity: 0.4 }} />,
       text: `Shaded circle: forecast risk at +${hour} h at one checkpoint. Circles are not blended or interpolated between checkpoints. This is a forecast, not live radar.`,
     },
     {

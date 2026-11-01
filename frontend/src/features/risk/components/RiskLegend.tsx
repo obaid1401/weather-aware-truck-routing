@@ -8,7 +8,7 @@ import { RiskBadge } from './RiskBadge'
 export function RiskLegend({ title = 'Risk levels' }: { title?: string }) {
   return (
     <Box component="section" aria-labelledby="risk-legend-title">
-      <Typography variant="subtitle2" component="h3" id="risk-legend-title" gutterBottom>
+      <Typography variant="subtitle2" component="h4" id="risk-legend-title" gutterBottom>
         {title}
       </Typography>
       <Box

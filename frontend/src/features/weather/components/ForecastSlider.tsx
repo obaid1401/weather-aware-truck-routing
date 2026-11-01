@@ -31,14 +31,22 @@ export function ForecastSlider({
 
   return (
     <Box>
-      <Typography variant="subtitle1" component="h3" id="forecast-slider-label" sx={{ fontWeight: 600 }}>
+      <Typography variant="subtitle2" component="h3" id="forecast-slider-label">
         Forecast hour
       </Typography>
       {/* Screen readers hear the hour and time from the slider's aria-valuetext. */}
-      <Typography variant="body2">
-        <strong>+{hour} h</strong> · {timeText}
-      </Typography>
-      <Box sx={{ px: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 1.5 }}>
+        <Typography
+          component="span"
+          sx={{ fontSize: '1.75rem', fontWeight: 800, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}
+        >
+          +{hour} h
+        </Typography>
+        <Typography component="span" variant="body2" color="text.secondary">
+          {timeText}
+        </Typography>
+      </Box>
+      <Box sx={{ px: 1.25, pt: 0.5 }}>
         <Slider
           value={hour}
           min={0}
@@ -46,19 +54,19 @@ export function ForecastSlider({
           step={1}
           marks={MARKS}
           onChange={(_event, value) => onChange(value as number)}
-          valueLabelDisplay="auto"
-          valueLabelFormat={(value) => `+${value} h`}
+          valueLabelDisplay="off"
           getAriaValueText={() => `${hourText}, ${timeText}`}
           aria-labelledby="forecast-slider-label"
         />
       </Box>
       <Typography variant="caption" color="text.secondary" component="p">
-        Shows the forecast at each checkpoint for this hour, whenever the truck reaches it. Route
-        rankings always use the forecast at each checkpoint&apos;s estimated arrival.
+        Conditions at each checkpoint at this hour, whenever the truck reaches it. Rankings always
+        use the forecast at each checkpoint’s estimated arrival.
       </Typography>
       {unavailableCount > 0 && (
-        <Typography variant="caption" component="p" sx={{ mt: 0.5, fontWeight: 600 }}>
-          Forecast unavailable for {unavailableCount} of {checkpointCount} checkpoints at this hour.
+        <Typography variant="caption" component="p" sx={{ mt: 0.5, fontWeight: 700 }}>
+          No forecast for {unavailableCount} of {checkpointCount} checkpoints at this hour. They are
+          shown as unavailable.
         </Typography>
       )}
     </Box>
