@@ -376,6 +376,7 @@ The map must show:
 - Risk-based checkpoint colors
 - Risk legend
 - Checkpoint details when selected
+- Weather heatmap overlay along the trip corridor (see FR-12)
 
 The route comparison panel must display:
 
@@ -416,6 +417,16 @@ Slider interaction is for visualization only:
 - It must not trigger a new route-generation or weather request.
 - It must not change route metrics, ranking, or the recommendation.
 - The frontend must not calculate risk; it displays the risk values provided by the backend.
+
+Weather heatmap:
+
+- Display a weather heatmap overlay along the trip corridor of the selected route.
+- The heatmap shows, for the hour selected on the slider, each checkpoint's hourly forecast risk from the backend response.
+- Moving the slider updates the heatmap from the already retrieved hourly entries; it does not trigger a new request.
+- Include a colour legend for the heatmap's risk levels, with text labels as well as colours, including `UNKNOWN`/`Unavailable`.
+- Use only actual checkpoint forecast data from the backend. Do not fabricate weather values between checkpoints, and do not present interpolated or blended values as provider measurements.
+- Show unavailable forecast data as unavailable, never as low risk.
+- Like the slider, the heatmap is for visualization only and never affects route metrics, ranking, or the recommendation.
 
 The map is a forecast-based checkpoint/corridor visualization, not live weather radar.
 
@@ -557,7 +568,7 @@ The project is ready for evaluation when:
 12. Recommendation follows the exact required ranking order.
 13. No-travel exposure is clearly displayed.
 14. The map shows routes and risk-based checkpoints.
-15. The forecast slider works without re-running routing and without changing the route ranking.
+15. The forecast slider and the weather heatmap work without re-running routing and without changing the route ranking; the heatmap updates with the slider and uses only actual checkpoint forecast data.
 16. API and frontend errors are handled.
 17. Core business logic has automated tests.
 18. Setup and deployment instructions are documented.

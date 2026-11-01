@@ -158,10 +158,15 @@ Implement the project phase by phase, in the following order.
 - Display risk-colored checkpoints.
 - Implement checkpoint details.
 - Implement the 0–48-hour forecast slider using each checkpoint's hourly forecast data. The slider must not calculate risk or change route ranking.
+- Display a weather heatmap overlay along the selected route's trip corridor using the available forecast data from the backend response (see `requirements.md` FR-12 and `architecture.md` §13, "Weather heatmap").
+- Update the heatmap when the user changes the 0–48-hour forecast slider, using the hourly forecast entries for the selected hour. Do not request new data from the backend.
+- Include a clear colour legend explaining the risk levels shown by the heatmap, including `UNKNOWN`/`Unavailable`. Do not rely on colour alone; show labels as well.
+- Use only actual backend forecast data for the heatmap. Do not fabricate weather values between checkpoints, and do not present interpolated or blended values as actual provider measurements. Show unavailable (`UNKNOWN`) data as unavailable, never as low risk.
+- Build the heatmap with the approved mapping libraries (React Leaflet and Leaflet). Do not add a heatmap plugin or other dependency without approval.
 - Display unavailable forecast data clearly.
 - Implement responsive layouts.
 
-**Completion criteria:** Users can inspect routes, checkpoints, risks, and forecast data. Changing the selected route, checkpoint, or forecast hour must not unnecessarily trigger another routing analysis.
+**Completion criteria:** Users can inspect routes, checkpoints, risks, forecast data, and the weather heatmap, which updates with the forecast slider. Changing the selected route, checkpoint, or forecast hour must not unnecessarily trigger another routing analysis.
 
 ### Phase 10 — Testing and Delivery
 

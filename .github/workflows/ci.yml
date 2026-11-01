@@ -54,7 +54,7 @@ jobs:
         run: pytest
 
   frontend:
-    name: Frontend build
+    name: Frontend checks
     runs-on: ubuntu-latest
 
     steps:
@@ -71,6 +71,14 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: frontend
+        run: npm test
 
       - name: Build frontend
         working-directory: frontend
