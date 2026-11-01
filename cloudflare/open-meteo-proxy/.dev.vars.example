@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `wrangler dev`. Never commit .dev.vars.
+# Use a long random value (see README.md). The backend's OPEN_METEO_PROXY_TOKEN must match.
+PROXY_TOKEN=

@@ -1,0 +1,6 @@
+# Local secrets for `wrangler dev`
+.dev.vars
+
+# Wrangler and npm local files
+.wrangler/
+node_modules/

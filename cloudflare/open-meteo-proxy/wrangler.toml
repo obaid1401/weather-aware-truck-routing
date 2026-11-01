@@ -1,0 +1,10 @@
+# Cloudflare Worker configuration.
+# `name` must match the Worker already created in the Cloudflare dashboard, so that a deploy
+# updates that Worker instead of creating a new one. Change it if yours has another name.
+name = "weather-aware-truck-routing-proxy"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# PROXY_TOKEN is a secret. Set it with `npx wrangler@4.151.1 secret put PROXY_TOKEN`, never
+# in this file. For local development (`wrangler dev`) it goes in .dev.vars, which is
+# git-ignored (see .dev.vars.example).
