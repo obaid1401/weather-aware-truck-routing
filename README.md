@@ -148,7 +148,7 @@ Tests never call live external APIs.
 
 Frontend, from `frontend/`: `npm test` (Vitest and React Testing Library), `npm run lint`, and `npm run build`.
 
-CI runs Ruff, `manage.py check`, and Pytest for the backend, and a production build for the frontend, on pushes and pull requests to `main`.
+CI runs Ruff, `manage.py check`, and Pytest for the backend, and ESLint, the Vitest tests, and a production build for the frontend, on pushes and pull requests to `main`.
 
 ## Deployment
 

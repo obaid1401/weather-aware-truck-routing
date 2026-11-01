@@ -845,11 +845,15 @@ The heatmap is built only from data already in the analysis response, using the 
 - Accessibility: risk is shown by text labels (legend, checkpoint details), not by colour alone.
 - The heatmap is visualization only. It never changes route metrics, ranking, or the recommendation, and the frontend never calculates risk.
 
+Layout (`app/pages/workspace.tsx`): on wide screens a column of panels (trip form or trip summary, verdict, then Routes and Checkpoints tabs) sits beside the map, which fills the window height below the header and stays in view. The forecast panel floats over the bottom of the map and holds the slider and a strip map of the selected route: one tick per checkpoint at its mileage, coloured by the backend's risk for the selected hour, with nothing drawn between checkpoints. Route cards show a bar of the backend's own miles per risk level (`RouteRiskBar`); nothing is recalculated. On narrow screens the page stacks: trip, map and forecast panel, then results.
+
 Implementation notes (`features/map/`):
 
 - Checkpoint markers keep the risk at each checkpoint's estimated arrival (the values the ranking uses). The heatmap circles and the checkpoint details show the selected hour. The map key states this.
 - A missing hourly entry is drawn as `UNKNOWN`; a neighbouring hour or checkpoint is never used.
 - Layers use panes so the stacking is fixed: heatmap, then alternate routes, then the selected route, then checkpoint markers on top. Only the selected route's checkpoints and heatmap are drawn.
+- The forecast panel over the map is at most half the map's height and scrolls if needed. The map fits the routes above the panel's measured height, and refits when that height changes, until the user pans, zooms, or clicks the map; after that the user's view is kept.
+- The map key opens as a dialog pop-up from the "How to read the map" button, above or below it, whichever has more room. A short line under the slider always states that the forecast hour changes the map colours only, never the ranking.
 
 ### `shared`
 
