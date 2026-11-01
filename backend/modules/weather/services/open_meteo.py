@@ -10,8 +10,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 from shared.http import (
     get_http_client,
@@ -26,7 +29,12 @@ from shared.validation import finite_number
 logger = logging.getLogger(__name__)
 
 PROVIDER = "Open-Meteo"
-FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+FORECAST_PATH = "/v1/forecast"
+
+# Sent only to a proxy configured with OPEN_METEO_BASE_URL, never to Open-Meteo itself.
+PROXY_TOKEN_HEADER = "X-Proxy-Token"
+OPEN_METEO_DOMAIN = "open-meteo.com"
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 WIND, PRECIPITATION, SNOWFALL = "wind_speed_10m", "precipitation", "snowfall"
 EXPECTED_UNITS = {WIND: "km/h", PRECIPITATION: "mm", SNOWFALL: "cm"}
@@ -70,9 +78,15 @@ class OpenMeteoForecastService:
         self,
         client: httpx.Client | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        base_url: str | None = None,
+        proxy_token: str | None = None,
     ) -> None:
         self._client = client or get_http_client()
         self._clock = clock
+        base_url = base_url if base_url is not None else settings.OPEN_METEO_BASE_URL
+        proxy_token = proxy_token if proxy_token is not None else settings.OPEN_METEO_PROXY_TOKEN
+        self._forecast_url = _forecast_url(base_url, proxy_token)
+        self._headers = {PROXY_TOKEN_HEADER: proxy_token} if proxy_token else {}
 
     def get_hourly_forecasts(
         self, coordinates: Sequence[Coordinate], start: datetime, end: datetime
@@ -125,7 +139,8 @@ class OpenMeteoForecastService:
             self._client,
             PROVIDER,
             "GET",
-            FORECAST_URL,
+            self._forecast_url,
+            headers=self._headers,
             params={
                 "latitude": ",".join(f"{c.latitude:.5f}" for c in batch),
                 "longitude": ",".join(f"{c.longitude:.5f}" for c in batch),
@@ -157,6 +172,41 @@ class OpenMeteoForecastService:
             return forecasts
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise invalid_response_error(PROVIDER, f"malformed forecast: {exc}") from exc
+
+
+def _forecast_url(base_url: str, proxy_token: str) -> str:
+    """The forecast endpoint under `base_url`, after checking the configuration.
+
+    A proxy token is only allowed with a proxy: never with Open-Meteo's own servers, and only
+    over HTTPS (plain HTTP is accepted for a proxy running on this machine). Error messages
+    never include the token.
+    """
+    base_url = base_url.strip()
+    if not base_url:
+        raise ImproperlyConfigured("OPEN_METEO_BASE_URL is not set.")
+    invalid = ImproperlyConfigured(
+        "OPEN_METEO_BASE_URL must be an http(s) URL such as https://api.open-meteo.com."
+    )
+    try:
+        parts = urlsplit(base_url)
+        _ = parts.port  # Reading the port raises ValueError if it is non-numeric or out of range.
+    except ValueError as exc:
+        raise invalid from exc
+    if parts.scheme not in {"http", "https"} or not parts.hostname or parts.query or parts.fragment:
+        raise invalid
+    if proxy_token:
+        # A trailing dot ("api.open-meteo.com.") names the same host, so it must not slip past.
+        host = parts.hostname.lower().rstrip(".")
+        if host == OPEN_METEO_DOMAIN or host.endswith(f".{OPEN_METEO_DOMAIN}"):
+            raise ImproperlyConfigured(
+                "OPEN_METEO_PROXY_TOKEN is set, but OPEN_METEO_BASE_URL points to Open-Meteo "
+                "itself. Set OPEN_METEO_BASE_URL to the proxy, or remove the token."
+            )
+        if parts.scheme != "https" and host not in LOCAL_HOSTS:
+            raise ImproperlyConfigured(
+                "OPEN_METEO_BASE_URL must use https when OPEN_METEO_PROXY_TOKEN is set."
+            )
+    return f"{base_url.rstrip('/')}{FORECAST_PATH}"
 
 
 def _no_hours(coordinates: Sequence[Coordinate]) -> list[LocationForecast]:

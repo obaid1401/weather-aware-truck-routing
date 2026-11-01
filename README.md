@@ -146,6 +146,8 @@ Backend (`backend/.env`):
 | `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the API |
 | `ORS_API_KEY` | **Required.** OpenRouteService API key, used for geocoding; startup fails if missing |
 | `VALHALLA_BASE_URL` | Valhalla server for truck routing; defaults to `https://valhalla1.openstreetmap.de` |
+| `OPEN_METEO_BASE_URL` | Optional. Where weather forecasts are requested; defaults to the public `https://api.open-meteo.com`. Set it to an https proxy (for example a Cloudflare Worker) in deployment; leave it unset locally |
+| `OPEN_METEO_PROXY_TOKEN` | Optional secret for that proxy, sent only to it in the `X-Proxy-Token` header. Analyses fail with a configuration error (logged by the backend) if it is set while `OPEN_METEO_BASE_URL` points to Open-Meteo itself, or to a non-https proxy other than `localhost` |
 | `ANALYZE_RATE_LIMIT` | **Required.** Analysis requests allowed per client, such as `10/minute`; startup fails if missing or invalid. Excess requests get HTTP 429 |
 
 Frontend (`frontend/.env`): `VITE_API_BASE_URL` is **required**, the backend URL, for example `http://127.0.0.1:8000`. See `frontend/.env.example`.
@@ -193,6 +195,8 @@ Environment variables (set in the Render dashboard, never in the repository):
 | `ORS_API_KEY` | Your OpenRouteService key |
 | `ANALYZE_RATE_LIMIT` | For example `10/minute` |
 | `VALHALLA_BASE_URL` | Optional; defaults to the public FOSSGIS server |
+| `OPEN_METEO_BASE_URL` | Optional; the weather proxy's https URL if one is used (defaults to the public Open-Meteo API) |
+| `OPEN_METEO_PROXY_TOKEN` | Optional; the proxy's secret, set only together with `OPEN_METEO_BASE_URL` |
 
 Render sets `PORT` itself and terminates HTTPS in front of the container. Free instances sleep when idle, so the first request after a pause is slow while the service starts.
 

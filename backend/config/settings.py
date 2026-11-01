@@ -171,3 +171,10 @@ ORS_API_KEY = env_required("ORS_API_KEY")
 
 # Valhalla is used for truck routing. The public FOSSGIS server is subject to its usage policy.
 VALHALLA_BASE_URL = os.environ.get("VALHALLA_BASE_URL", "https://valhalla1.openstreetmap.de")
+
+# Open-Meteo is used for hourly forecasts. Both settings are optional: by default the public
+# API is called directly. A deployment can point the base URL at a proxy (for example a
+# Cloudflare Worker) and authenticate to it with the token, which is sent only to a proxy,
+# never to Open-Meteo itself (see modules/weather/services/open_meteo.py).
+OPEN_METEO_BASE_URL = os.environ.get("OPEN_METEO_BASE_URL", "https://api.open-meteo.com")
+OPEN_METEO_PROXY_TOKEN = os.environ.get("OPEN_METEO_PROXY_TOKEN", "").strip()

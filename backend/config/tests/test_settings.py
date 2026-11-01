@@ -112,3 +112,46 @@ def test_invalid_rate_limit_fails_at_startup(rate: str) -> None:
 
     assert result.returncode != 0
     assert "ANALYZE_RATE_LIMIT must be a rate such as 10/minute or 100/hour" in result.stderr
+
+
+# Open-Meteo base URL and proxy token (both optional)
+
+LOAD_OPEN_METEO = (
+    "import os; os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings'; "
+    "import django; django.setup(); from django.conf import settings; "
+    "print(settings.OPEN_METEO_BASE_URL, len(settings.OPEN_METEO_PROXY_TOKEN), sep='|')"
+)
+
+
+def load_open_meteo(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-c", LOAD_OPEN_METEO],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_open_meteo_settings_are_not_required_at_startup() -> None:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("OPEN_METEO_")}
+
+    result = load_open_meteo({**env, **VALID})
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_open_meteo_settings_are_read_from_the_environment() -> None:
+    result = load_open_meteo(
+        {
+            **os.environ,
+            **VALID,
+            "OPEN_METEO_BASE_URL": "https://weather-proxy.example.workers.dev",
+            "OPEN_METEO_PROXY_TOKEN": "  proxy-secret  ",
+        }
+    )
+
+    assert result.returncode == 0, result.stderr
+    # Only the token's length is printed, so the test output never shows it.
+    assert result.stdout.strip() == "https://weather-proxy.example.workers.dev|12"

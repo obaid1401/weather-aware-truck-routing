@@ -4,8 +4,14 @@ from typing import Any
 
 import httpx
 import pytest
+from django.core.exceptions import ImproperlyConfigured
+from django.test import override_settings
 
-from modules.weather.services.open_meteo import ForecastHour, OpenMeteoForecastService
+from modules.weather.services.open_meteo import (
+    PROXY_TOKEN_HEADER,
+    ForecastHour,
+    OpenMeteoForecastService,
+)
 from shared.http import get_http_client
 from shared.types import (
     Coordinate,
@@ -208,6 +214,127 @@ def test_naive_or_reversed_windows_are_programming_errors() -> None:
 
 def test_uses_the_shared_configured_client_by_default() -> None:
     assert OpenMeteoForecastService()._client is get_http_client()
+
+
+# Configuration: base URL and proxy token
+
+PROXY = "https://weather-proxy.example.workers.dev"
+TOKEN = "proxy-secret-for-tests"
+
+
+def configured_request(**settings: str) -> httpx.Request:
+    """The request sent for one location with the given Open-Meteo settings."""
+    recorder = Recorder(echo_locations)
+    with override_settings(**settings):
+        # Same default headers as the shared client, so header merging is exercised.
+        client = httpx.Client(
+            transport=httpx.MockTransport(recorder), headers=get_http_client().headers
+        )
+        forecasts = OpenMeteoForecastService(client, clock=lambda: NOW)
+    forecasts.get_hourly_forecasts([DENVER], START, START)
+    (request,) = recorder.requests
+    return request
+
+
+def endpoint(request: httpx.Request) -> str:
+    return str(request.url.copy_with(query=None))
+
+
+def test_default_forecast_url_is_the_public_api_without_a_token() -> None:
+    request = configured_request(
+        OPEN_METEO_BASE_URL="https://api.open-meteo.com", OPEN_METEO_PROXY_TOKEN=""
+    )
+
+    assert endpoint(request) == "https://api.open-meteo.com/v1/forecast"
+    assert PROXY_TOKEN_HEADER not in request.headers
+
+
+@pytest.mark.parametrize("base_url", [PROXY, f"{PROXY}/", f"  {PROXY}/  "])
+def test_custom_base_url_builds_the_forecast_url(base_url: str) -> None:
+    request = configured_request(OPEN_METEO_BASE_URL=base_url, OPEN_METEO_PROXY_TOKEN="")
+
+    assert endpoint(request) == f"{PROXY}/v1/forecast"
+    assert PROXY_TOKEN_HEADER not in request.headers
+
+
+def test_request_parameters_and_client_headers_are_unchanged_through_a_proxy() -> None:
+    public = configured_request(
+        OPEN_METEO_BASE_URL="https://api.open-meteo.com", OPEN_METEO_PROXY_TOKEN=""
+    )
+    proxied = configured_request(OPEN_METEO_BASE_URL=PROXY, OPEN_METEO_PROXY_TOKEN=TOKEN)
+
+    assert dict(proxied.url.params) == dict(public.url.params)
+    assert proxied.method == public.method == "GET"
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "",
+        "   ",
+        "api.open-meteo.com",
+        "ftp://proxy.example",
+        "https://",
+        f"{PROXY}/?key=1",
+        "https://[proxy",
+        "https://proxy.example:abc",
+        "https://proxy.example:99999",
+    ],
+)
+def test_empty_or_invalid_base_url_is_a_configuration_error(base_url: str) -> None:
+    with (
+        override_settings(OPEN_METEO_BASE_URL=base_url, OPEN_METEO_PROXY_TOKEN=""),
+        pytest.raises(ImproperlyConfigured, match="OPEN_METEO_BASE_URL"),
+    ):
+        OpenMeteoForecastService(httpx.Client())
+
+
+def test_proxy_token_is_sent_to_a_configured_proxy() -> None:
+    request = configured_request(OPEN_METEO_BASE_URL=PROXY, OPEN_METEO_PROXY_TOKEN=TOKEN)
+
+    assert endpoint(request) == f"{PROXY}/v1/forecast"
+    assert request.headers[PROXY_TOKEN_HEADER] == TOKEN
+    # The shared client's own headers are kept.
+    assert request.headers["User-Agent"] == get_http_client().headers["User-Agent"]
+
+
+def test_proxy_token_is_allowed_over_http_only_for_a_local_proxy() -> None:
+    request = configured_request(
+        OPEN_METEO_BASE_URL="http://localhost:8787", OPEN_METEO_PROXY_TOKEN=TOKEN
+    )
+    assert request.headers[PROXY_TOKEN_HEADER] == TOKEN
+
+    with (
+        override_settings(
+            OPEN_METEO_BASE_URL="http://weather-proxy.example", OPEN_METEO_PROXY_TOKEN=TOKEN
+        ),
+        pytest.raises(ImproperlyConfigured, match="must use https") as error,
+    ):
+        OpenMeteoForecastService(httpx.Client())
+    assert TOKEN not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.open-meteo.com",
+        "https://API.Open-Meteo.com/",
+        "https://customer-api.open-meteo.com",
+        "https://open-meteo.com",
+        "https://api.open-meteo.com.",
+        "https://API.OPEN-METEO.COM.:443/",
+    ],
+)
+def test_proxy_token_is_never_sent_to_open_meteo_itself(base_url: str) -> None:
+    sent: list[httpx.Request] = []
+    with (
+        override_settings(OPEN_METEO_BASE_URL=base_url, OPEN_METEO_PROXY_TOKEN=TOKEN),
+        pytest.raises(ImproperlyConfigured, match="points to Open-Meteo itself") as error,
+    ):
+        OpenMeteoForecastService(httpx.Client(transport=httpx.MockTransport(sent.append)))
+
+    assert sent == []
+    assert TOKEN not in str(error.value)
 
 
 # Provider response validation
