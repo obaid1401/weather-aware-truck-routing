@@ -58,10 +58,20 @@ def test_unknown_wind_is_unknown_for_every_load(lbs: float) -> None:
     assert wind_risk(None, lbs) == UNKNOWN
 
 
-@pytest.mark.parametrize("lbs", [0.0, -1.0, float("nan"), float("inf")])
+@pytest.mark.parametrize("lbs", [-1.0, -0.001, float("nan"), float("inf")])
 def test_invalid_load_weight_is_rejected(lbs: float) -> None:
     with pytest.raises(ValueError):
         wind_risk(20.0, lbs)
+
+
+@pytest.mark.parametrize(
+    ("wind_mph", "expected"),
+    [(20.0, LOW), (40.0, HIGH), (50.0, SEVERE), (55.0, NO_TRAVEL)],
+)
+def test_an_empty_truck_uses_the_wind_thresholds_without_cargo_rules(
+    wind_mph: float, expected: RiskLevel
+) -> None:
+    assert wind_risk(wind_mph, 0.0) == expected
 
 
 # Final risk

@@ -25,6 +25,10 @@ class TripInput:
     departure_time: datetime
     load_weight_lbs: float
     checkpoint_interval_miles: int = DEFAULT_CHECKPOINT_INTERVAL_MILES
+    # Coordinates of a place the user chose from the suggestions. When set, that address is
+    # used as given instead of being geocoded again.
+    origin_coordinate: Coordinate | None = None
+    destination_coordinate: Coordinate | None = None
 
 
 @dataclass(frozen=True)

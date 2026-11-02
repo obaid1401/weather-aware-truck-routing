@@ -10,6 +10,10 @@ import { TripAnalysisPage } from './TripAnalysisPage'
 
 vi.mock('../../features/analysis/api/analyzeTrip', () => ({ analyzeTrip: vi.fn() }))
 const mockedAnalyzeTrip = vi.mocked(analyzeTrip)
+// Place suggestions are covered by the trip feature's tests; here they return nothing.
+vi.mock('../../features/trip/api/suggestLocations', () => ({
+  suggestLocations: vi.fn().mockResolvedValue([]),
+}))
 
 function renderPage() {
   render(
@@ -21,8 +25,8 @@ function renderPage() {
 }
 
 async function submitTrip(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByRole('textbox', { name: /origin/i }), 'Denver, CO')
-  await user.type(screen.getByRole('textbox', { name: /destination/i }), 'Salt Lake City, UT')
+  await user.type(screen.getByRole('combobox', { name: /origin/i }), 'Denver, CO')
+  await user.type(screen.getByRole('combobox', { name: /destination/i }), 'Salt Lake City, UT')
   await user.type(screen.getByRole('textbox', { name: /cargo weight/i }), '36000')
   await user.click(screen.getByRole('button', { name: /analyze routes/i }))
 }
@@ -36,7 +40,7 @@ describe('trip analysis page', () => {
     renderPage()
 
     expect(screen.getByRole('heading', { level: 1, name: 'Weather-Aware Truck Routing' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /origin/i })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /origin/i })).toBeInTheDocument()
     const map = within(screen.getByRole('region', { name: 'Route map' }))
     expect(map.getByText(/your routes, checkpoints, and the weather along them will appear here/i)).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /recommended/i })).not.toBeInTheDocument()
@@ -87,11 +91,11 @@ describe('trip analysis page', () => {
     expect(await trip.findByRole('heading', { name: 'Your trip' })).toBeInTheDocument()
     expect(trip.getByText('Denver, CO, USA')).toBeInTheDocument()
     expect(trip.getByText('36,000 lb')).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryByRole('textbox', { name: /origin/i })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('combobox', { name: /origin/i })).not.toBeInTheDocument())
 
     await user.click(trip.getByRole('button', { name: 'Edit trip' }))
 
-    const origin = await screen.findByRole('textbox', { name: /origin/i })
+    const origin = await screen.findByRole('combobox', { name: /origin/i })
     expect(origin).toHaveValue('Denver, CO')
     expect(screen.getByRole('textbox', { name: /cargo weight/i })).toHaveValue('36000')
     await waitFor(() => expect(origin).toHaveFocus())
@@ -139,7 +143,7 @@ describe('trip analysis page', () => {
     const busy = await screen.findByRole('button', { name: /analyzing routes/i })
     expect(busy).toBeDisabled()
     // The disabled button cannot be clicked; pressing Enter in a field must not resubmit either.
-    await user.type(screen.getByRole('textbox', { name: /origin/i }), '{Enter}')
+    await user.type(screen.getByRole('combobox', { name: /origin/i }), '{Enter}')
     expect(mockedAnalyzeTrip).toHaveBeenCalledTimes(1)
     expect(
       screen.getByText('Finding truck routes and checking the forecast along each one…'),
@@ -160,8 +164,8 @@ describe('trip analysis page', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Trip too long for the routing service')
     expect(alert).toHaveTextContent("The trip exceeds the routing server's maximum truck route distance.")
-    expect(screen.getByRole('textbox', { name: /origin/i })).toHaveValue('Denver, CO')
-    expect(screen.getByRole('textbox', { name: /destination/i })).toHaveValue('Salt Lake City, UT')
+    expect(screen.getByRole('combobox', { name: /origin/i })).toHaveValue('Denver, CO')
+    expect(screen.getByRole('combobox', { name: /destination/i })).toHaveValue('Salt Lake City, UT')
     expect(screen.getByRole('textbox', { name: /cargo weight/i })).toHaveValue('36000')
     expect(screen.getByRole('button', { name: /analyze routes/i })).toBeEnabled()
   })

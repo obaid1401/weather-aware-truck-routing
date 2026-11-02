@@ -21,16 +21,17 @@ import type { ApiProblem, TripField } from '../../analysis/services/apiProblem'
 import {
   CHECKPOINT_INTERVALS_MILES,
   type CheckpointIntervalMiles,
+  type GeocodedLocation,
   type TripAnalysisRequest,
 } from '../../analysis/types/api'
 import { parseLocalInputValue, toLocalInputValue, utcOffset } from '../../../shared/utils/datetime'
 import {
-  MAX_ADDRESS_LENGTH,
   initialTripFormValues,
   validateTripForm,
   type TripFormErrors,
   type TripFormValues,
 } from '../schemas/tripFormSchema'
+import { LocationField } from './LocationField'
 
 interface TripFormProps {
   onSubmit: (request: TripAnalysisRequest) => void
@@ -102,8 +103,22 @@ export function TripForm({ onSubmit, isSubmitting, problem, now = () => new Date
     onSubmit(request)
   }
 
-  const chooseCandidate = (field: 'origin' | 'destination', label: string) => {
-    update(field, label)
+  /** Sets an address and the place it was chosen from (null when typed). Origin and destination
+   * are independent; editing an address always forgets its chosen place. */
+  const setAddress = (
+    field: 'origin' | 'destination',
+    text: string,
+    place: GeocodedLocation | null,
+  ) => {
+    update(field, text)
+    setValues((current) => ({
+      ...current,
+      [field === 'origin' ? 'originPlace' : 'destinationPlace']: place,
+    }))
+  }
+
+  const chooseCandidate = (field: 'origin' | 'destination', candidate: GeocodedLocation) => {
+    setAddress(field, candidate.label, candidate)
     fieldRefs.current[field]?.focus()
   }
 
@@ -127,7 +142,7 @@ export function TripForm({ onSubmit, isSubmitting, problem, now = () => new Date
             <Chip
               key={`${candidate.label}-${candidate.latitude}-${candidate.longitude}`}
               label={candidate.label}
-              onClick={() => chooseCandidate(field, candidate.label)}
+              onClick={() => chooseCandidate(field, candidate)}
               aria-label={`Use ${candidate.label} as the ${field}`}
               variant="outlined"
               color="primary"
@@ -139,21 +154,17 @@ export function TripForm({ onSubmit, isSubmitting, problem, now = () => new Date
 
   const addressField = (field: 'origin' | 'destination', label: string, example: string) => (
     <Box>
-      <TextField
-        id={field}
-        name={field}
+      <LocationField
+        field={field}
         label={label}
         value={values[field]}
-        onChange={(event) => update(field, event.target.value)}
-        error={Boolean(errorFor(field))}
-        helperText={errorFor(field) ?? `City, address, or place. For example: ${example}.`}
-        required
-        fullWidth
-        autoComplete="off"
-        inputRef={(element: HTMLInputElement | null) => {
+        onChange={(text) => setAddress(field, text, null)}
+        onSelect={(place) => setAddress(field, place.label, place)}
+        error={errorFor(field)}
+        helperText={`City, address, or place. For example: ${example}.`}
+        inputRef={(element) => {
           fieldRefs.current[field] = element
         }}
-        slotProps={{ htmlInput: { maxLength: MAX_ADDRESS_LENGTH } }}
       />
       {candidatesFor(field)}
     </Box>

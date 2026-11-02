@@ -27,6 +27,12 @@ from shared.types import (
 
 logger = logging.getLogger(__name__)
 
+# What the client was doing when it hit this API's own rate limit, by throttle scope.
+THROTTLED_MESSAGES = {
+    "analyze": "Too many analysis requests. Try again later.",
+    "suggest": "Too many place suggestion requests. Keep typing, or try again shortly.",
+}
+
 ANALYSIS_ERROR_STATUS: dict[type[AnalysisError], int] = {
     GeocodingAmbiguousError: status.HTTP_422_UNPROCESSABLE_ENTITY,
     GeocodingNotFoundError: status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -72,6 +78,8 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
 
     if isinstance(exc, Throttled):
         # This API's own rate limit (HTTP 429), not a provider's.
+        scope = getattr(context.get("view"), "throttle_scope", None)
+        message = THROTTLED_MESSAGES.get(scope, "Too many requests. Try again later.")
         details: dict[str, Any] = {}
         headers = None
         if exc.wait is not None:
@@ -80,7 +88,7 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
             headers = {"Retry-After": str(seconds)}
         return error_response(
             "RATE_LIMITED",
-            "Too many analysis requests. Try again later.",
+            message,
             details,
             status.HTTP_429_TOO_MANY_REQUESTS,
             headers,

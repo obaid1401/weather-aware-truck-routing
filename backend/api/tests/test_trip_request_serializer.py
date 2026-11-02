@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from api.serializers.trip import TripAnalysisRequestSerializer
-from shared.types import TripInput
+from shared.types import Coordinate, TripInput
 
 
 def future_departure(hours: int = 24) -> str:
@@ -106,10 +106,82 @@ def test_invalid_departure_time_is_rejected() -> None:
     assert "departure_time" in validate(valid_payload(departure_time="not-a-date")).errors
 
 
-@pytest.mark.parametrize("weight", [0, -1, -36000, "inf", "nan", "heavy"])
-def test_non_positive_or_invalid_cargo_weight_is_rejected(weight: object) -> None:
+@pytest.mark.parametrize("weight", [-1, -0.5, -36000, "inf", "nan", "heavy", "", None])
+def test_negative_or_invalid_cargo_weight_is_rejected(weight: object) -> None:
     assert "load_weight_lbs" in validate(valid_payload(load_weight_lbs=weight)).errors
+
+
+def test_negative_cargo_weight_message() -> None:
+    errors = validate(valid_payload(load_weight_lbs=-1)).errors
+
+    assert str(errors["load_weight_lbs"][0]) == "Cargo weight must be 0 or more pounds."
+
+
+@pytest.mark.parametrize("weight", [0, 0.0, "0"])
+def test_empty_truck_is_accepted(weight: object) -> None:
+    assert validate(valid_payload(load_weight_lbs=weight)).to_trip_input().load_weight_lbs == 0
 
 
 def test_fractional_cargo_weight_is_accepted() -> None:
     assert validate(valid_payload(load_weight_lbs=0.5)).to_trip_input().load_weight_lbs == 0.5
+
+
+# Places chosen from the suggestions
+
+
+def test_chosen_place_coordinates_are_kept() -> None:
+    trip = validate(
+        valid_payload(
+            origin="Denver, CO, USA",
+            origin_coordinates={"latitude": 39.741, "longitude": -104.986},
+        )
+    ).to_trip_input()
+
+    assert trip.origin == "Denver, CO, USA"
+    assert trip.origin_coordinate == Coordinate(39.741, -104.986)
+    # Each address is independent: the destination is still geocoded.
+    assert trip.destination_coordinate is None
+
+
+@pytest.mark.parametrize("value", [None, "absent"])
+def test_coordinates_are_optional(value: object) -> None:
+    payload = valid_payload()
+    if value != "absent":
+        payload["destination_coordinates"] = value
+
+    trip = validate(payload).to_trip_input()
+
+    assert trip.origin_coordinate is None
+    assert trip.destination_coordinate is None
+
+
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        {"latitude": 90.5, "longitude": 0},
+        {"latitude": -91, "longitude": 0},
+        {"latitude": 0, "longitude": 180.1},
+        {"latitude": 0, "longitude": -181},
+        {"latitude": "north", "longitude": 0},
+        {"latitude": "nan", "longitude": 0},
+        {"latitude": 0, "longitude": "inf"},
+        {"latitude": 39.7},
+        "39.7,-104.9",
+    ],
+)
+def test_invalid_coordinates_are_rejected(coordinates: object) -> None:
+    errors = validate(valid_payload(destination_coordinates=coordinates)).errors
+
+    assert "destination_coordinates" in errors
+
+
+def test_coordinate_range_limits_are_accepted() -> None:
+    trip = validate(
+        valid_payload(
+            origin_coordinates={"latitude": -90, "longitude": -180},
+            destination_coordinates={"latitude": 90, "longitude": 180},
+        )
+    ).to_trip_input()
+
+    assert trip.origin_coordinate == Coordinate(-90, -180)
+    assert trip.destination_coordinate == Coordinate(90, 180)

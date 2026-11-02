@@ -145,5 +145,6 @@ def incomplete_data_warnings(result: RiskAssessment) -> tuple[str, ...]:
 
 
 def _require_valid_weight(load_weight_lbs: float) -> None:
-    if not (math.isfinite(load_weight_lbs) and load_weight_lbs > 0):
-        raise ValueError(f"load weight must be a positive number, got {load_weight_lbs!r}")
+    # 0 lb (an empty truck) is valid; the cargo rules then never apply.
+    if not (math.isfinite(load_weight_lbs) and load_weight_lbs >= 0):
+        raise ValueError(f"load weight must be 0 or more, got {load_weight_lbs!r}")

@@ -19,7 +19,15 @@ from modules.risk.domain.assessment import assess_checkpoint
 from modules.routing.services.valhalla_routing import ValhallaRoutingService
 from modules.weather.services.checkpoint_weather import SERIES_HOURS, CheckpointWeatherService
 from shared.datetimes import add_elapsed
-from shared.types import Checkpoint, Location, Recommendation, Route, RouteMetrics, TripInput
+from shared.types import (
+    Checkpoint,
+    Coordinate,
+    Location,
+    Recommendation,
+    Route,
+    RouteMetrics,
+    TripInput,
+)
 
 
 @dataclass(frozen=True)
@@ -54,8 +62,8 @@ class AnalyzeTripUseCase:
         self._weather = weather or CheckpointWeatherService()
 
     def execute(self, trip: TripInput) -> TripAnalysis:
-        origin = self._geocoder.geocode(trip.origin, "origin")
-        destination = self._geocoder.geocode(trip.destination, "destination")
+        origin = self._locate(trip.origin, trip.origin_coordinate, "origin")
+        destination = self._locate(trip.destination, trip.destination_coordinate, "destination")
 
         routing = self._router.get_routes(origin, destination)
         generated = [
@@ -96,3 +104,9 @@ class AnalyzeTripUseCase:
             forecast_window_end=add_elapsed(trip.departure_time, timedelta(hours=SERIES_HOURS)),
             provider_warnings=routing.warnings + weather.warnings,
         )
+
+    def _locate(self, address: str, chosen: Coordinate | None, field: str) -> Location:
+        """The chosen place as given, or the typed address geocoded (which can be ambiguous)."""
+        if chosen is not None:
+            return Location(address, chosen.latitude, chosen.longitude)
+        return self._geocoder.geocode(address, field)

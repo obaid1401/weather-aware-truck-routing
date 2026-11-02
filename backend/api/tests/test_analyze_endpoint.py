@@ -91,6 +91,48 @@ def test_complete_analysis_response(client: Client, providers: FakeProviders) ->
 
 
 @VALHALLA
+def test_a_chosen_place_is_not_geocoded_again(client: Client, providers: FakeProviders) -> None:
+    body = request_body(
+        origin="Denver, CO, USA",
+        origin_coordinates={"latitude": 39.7392, "longitude": -104.9903},
+    )
+
+    response = post(client, body)
+
+    assert response.status_code == 200, response.content
+    data = response.json()
+    assert data["origin"] == {
+        "label": "Denver, CO, USA",
+        "latitude": 39.7392,
+        "longitude": -104.9903,
+    }
+    # Only the typed destination was geocoded.
+    assert providers.hosts().count("api.openrouteservice.org") == 1
+    assert set(data["trip"]) == {
+        "origin",
+        "destination",
+        "departure_time",
+        "load_weight_lbs",
+        "checkpoint_interval_miles",
+    }
+
+
+@VALHALLA
+def test_an_empty_truck_is_analyzed(client: Client, providers: FakeProviders) -> None:
+    response = post(client, request_body(load_weight_lbs=0))
+
+    assert response.status_code == 200, response.content
+    assert response.json()["trip"]["load_weight_lbs"] == 0
+
+
+def test_invalid_chosen_coordinates_are_a_validation_error(client: Client) -> None:
+    response = post(client, request_body(origin_coordinates={"latitude": 95, "longitude": 0}))
+
+    assert response.status_code == 400
+    assert "origin_coordinates" in response.json()["error"]["details"]
+
+
+@VALHALLA
 def test_routes_carry_geometry_metrics_and_checkpoints(
     client: Client, providers: FakeProviders
 ) -> None:

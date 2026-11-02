@@ -8,13 +8,14 @@ The frontend only displays data from the backend. It never calls OpenRouteServic
 
 - **Phase 8 (Frontend Foundation):** done. Trip form with validation, loading and error states, connected to `POST /api/v1/routes/analyze/`, with a summary of the recommendation and all warnings.
 - **Phase 9 (Results and Visualization):** done. Route comparison in the backend's ranked order, an interactive map (routes, origin and destination, risk-coloured checkpoints), checkpoint details, a 0–48-hour forecast slider, and a weather heatmap along the selected route. Changing the route, checkpoint, or hour never sends a request.
-- **Next:** Phase 10 (Testing and Delivery).
+- **Since Phase 9:** place suggestions while typing the origin and destination (a chosen place's coordinates are sent with the trip, so it is not geocoded again), a redesigned layout, and 0 lb accepted as a cargo weight.
+- **Phase 10 (Testing and Delivery):** in progress. Deployed as a Render static site; see [`../docs/deployment.md`](../docs/deployment.md).
 
 ## Stack
 
 - React, TypeScript (strict), Vite
 - Material UI
-- TanStack Query for the analysis request
+- TanStack Query for the analysis request and the address suggestions
 - Axios as the HTTP client
 - Vitest and React Testing Library for tests
 - React Leaflet and Leaflet, with OpenStreetMap tiles
@@ -66,7 +67,9 @@ src/
 │   │   ├── services/        analysisResponse: runtime response checks; apiProblem: error normalization
 │   │   └── types/           Request, response, and error types (mirror the backend serializers)
 │   ├── trip/
-│   │   ├── components/      TripForm, TripSummary
+│   │   ├── api/             suggestLocations (GET /api/v1/locations/suggestions/)
+│   │   ├── components/      TripForm, LocationField (address with suggestions), TripSummary
+│   │   ├── hooks/           useLocationSuggestions (debounced, cached), useDebouncedValue
 │   │   └── schemas/         tripFormSchema: form values and validation
 │   ├── recommendation/
 │   │   └── components/      AnalysisSummary (recommendation and warnings)

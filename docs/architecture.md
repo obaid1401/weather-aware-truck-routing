@@ -104,10 +104,11 @@ Use a Python version supported by the selected Django release and deployment pla
 
 | Service | Responsibility |
 |---|---|
-| OpenRouteService | Geocoding |
+| OpenRouteService | Geocoding, and place suggestions while an address is typed |
 | Valhalla | Heavy-vehicle routing |
 | Open-Meteo | Hourly weather forecasts |
 | OpenStreetMap | Map tiles |
+| Cloudflare Workers | In deployment only: the Open-Meteo proxy (`cloudflare/open-meteo-proxy/`), used when `OPEN_METEO_BASE_URL` points to it |
 
 Use Valhalla's `/route` endpoint with `truck` costing and `alternates: 2` (up to three routes). The server is configured by `VALHALLA_BASE_URL` and defaults to the public FOSSGIS server, which needs no API key but has a usage policy and a 1,500 km truck route limit. Valhalla can still return fewer than three routes.
 
@@ -209,9 +210,14 @@ weather-aware-truck-routing/
 │   ├── package.json
 │   └── .env.example
 │
+├── cloudflare/
+│   └── open-meteo-proxy/        Cloudflare Worker forwarding the backend's forecast requests
+│                                to Open-Meteo (deployment only; see its README)
+│
 ├── docs/
 │   ├── requirements.md
 │   ├── architecture.md
+│   ├── deployment.md
 │   └── CLAUDE.md
 │
 ├── CLAUDE.md
@@ -683,16 +689,18 @@ Primary endpoint:
 
 `POST /api/v1/routes/analyze/`
 
-Supporting endpoint:
+Supporting endpoints:
 
-`GET /api/health/` (intentionally unversioned)
+- `GET /api/v1/locations/suggestions/?q=…`: place suggestions for a partly typed address (3-200 characters), returned as `{"suggestions": [{label, latitude, longitude}, ...]}`, at most 5, best first. It uses OpenRouteService's `/geocode/autocomplete` through the geocoding module (`OrsGeocodingService.suggest`), so the API key stays on the backend. It has its own per-client limit, `SUGGEST_RATE_LIMIT` (required from the environment, no built-in value). Provider failures use the standard error format and status codes.
+- `GET /api/health/` (intentionally unversioned)
 
 The request serializer validates:
 
 - Origin and destination.
+- Optional `origin_coordinates` / `destination_coordinates` (latitude -90 to 90, longitude -180 to 180) for an address chosen from the suggestions. When present, that address is used as given (`AnalyzeTripUseCase._locate`) and not geocoded; each address is handled independently.
 - Timezone-aware departure time.
 - Departure time not in the past.
-- Positive cargo weight.
+- Cargo weight of 0 lb or more (an empty truck is valid; the cargo-weight wind rules then never apply).
 - Checkpoint interval of 10, 25, or 50 miles (optional; defaults to 25).
 
 The response should contain normalized application data, not raw provider responses.
@@ -785,6 +793,7 @@ Features import from `shared/` and from another feature's public files where nee
 ### `features/trip`
 
 - Trip form
+- Address suggestions while typing (`LocationField`, an accessible combobox): requested after a 300 ms pause from the third character, cached per query, superseded requests cancelled, never retried automatically. Choosing a suggestion fills the field with its label; the analysis still geocodes the field's text, as before.
 - Input validation
 - Departure date/time
 - Load weight
@@ -1021,6 +1030,12 @@ Production serving (approved for deployment on Render):
 - Static files: none are served. The API renders JSON only and Swagger UI loads its assets from a CDN, so no static-file handling (such as WhiteNoise) is needed.
 
 Install only `requirements.txt` in production.
+
+Deployed components (setup, environment variables, and order in [`deployment.md`](deployment.md)):
+
+- Backend: a Render web service built from `backend/Dockerfile`.
+- Frontend: a Render static site built with `npm run build` and published from `frontend/dist`. `VITE_API_BASE_URL` is set at build time, and the backend's `CORS_ALLOWED_ORIGINS` must contain the site's origin.
+- Weather proxy: the Cloudflare Worker in `cloudflare/open-meteo-proxy/`. Open-Meteo limits free use per IP address and Render's outbound addresses are shared, so the deployed backend sets `OPEN_METEO_BASE_URL` to the Worker and authenticates with `OPEN_METEO_PROXY_TOKEN` (the Worker's `PROXY_TOKEN` secret). The Worker accepts only the backend's exact forecast request and forwards it to the fixed Open-Meteo URL. Local development calls Open-Meteo directly.
 
 ## 19. Architecture Decisions
 
