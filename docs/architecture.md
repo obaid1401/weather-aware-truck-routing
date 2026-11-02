@@ -691,7 +691,7 @@ Primary endpoint:
 
 Supporting endpoints:
 
-- `GET /api/v1/locations/suggestions/?q=…`: place suggestions for a partly typed address (3-200 characters), returned as `{"suggestions": [{label, latitude, longitude}, ...]}`, at most 5, best first. It uses OpenRouteService's `/geocode/autocomplete` through the geocoding module (`OrsGeocodingService.suggest`), so the API key stays on the backend. It has its own per-client limit, `SUGGEST_RATE_LIMIT` (required from the environment, no built-in value). Provider failures use the standard error format and status codes.
+- `GET /api/v1/locations/suggestions/?q=…`: place suggestions for a partly typed address (3-200 characters), returned as `{"suggestions": [{label, latitude, longitude}, ...]}`, at most 5, best first. It uses OpenRouteService's Pelias autocomplete (`https://api.heigit.org/pelias/v1/autocomplete`) through the geocoding module (`OrsGeocodingService.suggest`), so the API key stays on the backend. It has its own per-client limit, `SUGGEST_RATE_LIMIT` (required from the environment, no built-in value). Provider failures use the standard error format and status codes.
 - `GET /api/health/` (intentionally unversioned)
 
 The request serializer validates:

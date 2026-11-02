@@ -125,7 +125,7 @@ class FakeProviders:
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         host = request.url.host
-        if host == "api.openrouteservice.org":
+        if host == "api.heigit.org":
             return self.geocode(request)
         if host == "valhalla.test":
             return self.valhalla(request)

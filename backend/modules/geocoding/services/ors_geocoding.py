@@ -1,5 +1,5 @@
-"""OpenRouteService geocoding (Pelias `/geocode/search`) and place suggestions
-(`/geocode/autocomplete`)."""
+"""OpenRouteService geocoding (Pelias `/pelias/v1/search`) and place suggestions
+(`/pelias/v1/autocomplete`)."""
 
 from dataclasses import dataclass
 from typing import Any

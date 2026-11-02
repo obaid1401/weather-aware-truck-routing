@@ -82,8 +82,8 @@ def test_complete_analysis_response(client: Client, providers: FakeProviders) ->
     assert data["destination"]["label"] == "Salt Lake City, UT, USA"
     # One geocode per address, one routing call, one weather call for both routes.
     assert providers.hosts() == [
-        "api.openrouteservice.org",
-        "api.openrouteservice.org",
+        "api.heigit.org",
+        "api.heigit.org",
         "valhalla.test",
         "api.open-meteo.com",
     ]
@@ -107,7 +107,7 @@ def test_a_chosen_place_is_not_geocoded_again(client: Client, providers: FakePro
         "longitude": -104.9903,
     }
     # Only the typed destination was geocoded.
-    assert providers.hosts().count("api.openrouteservice.org") == 1
+    assert providers.hosts().count("api.heigit.org") == 1
     assert set(data["trip"]) == {
         "origin",
         "destination",
