@@ -13,9 +13,17 @@ export const DEFAULT_CHECKPOINT_INTERVAL_MILES: CheckpointIntervalMiles = 25
 
 // POST /api/v1/routes/analyze/
 
+export interface Coordinates {
+  latitude: number
+  longitude: number
+}
+
 export interface TripAnalysisRequest {
   origin: string
   destination: string
+  /** Sent only for a place chosen from the suggestions; the backend then skips geocoding it. */
+  origin_coordinates?: Coordinates
+  destination_coordinates?: Coordinates
   /** ISO-8601 with a UTC offset, for example 2026-11-05T08:00:00-07:00. */
   departure_time: string
   load_weight_lbs: number
@@ -87,6 +95,13 @@ export interface GeocodedLocation {
   label: string
   latitude: number
   longitude: number
+}
+
+// GET /api/v1/locations/suggestions/?q=…
+
+export interface LocationSuggestionsResponse {
+  /** Up to 5 matching places, best first. Empty when nothing matches. */
+  suggestions: GeocodedLocation[]
 }
 
 export interface TripEcho {

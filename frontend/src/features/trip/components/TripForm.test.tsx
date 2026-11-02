@@ -1,11 +1,20 @@
 import { ThemeProvider } from '@mui/material/styles'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiProblem } from '../../analysis/services/apiProblem'
 import { theme } from '../../../shared/theme/theme'
+import { suggestLocations } from '../api/suggestLocations'
 import { TripForm } from './TripForm'
+
+// Suggestions are covered in LocationField.test.tsx; here they just return nothing.
+vi.mock('../api/suggestLocations', () => ({ suggestLocations: vi.fn() }))
+beforeEach(() => {
+  vi.mocked(suggestLocations).mockReset().mockResolvedValue([])
+})
 
 const NOW = new Date(2026, 10, 3, 10, 15) // 2026-11-03 10:15 America/Denver (MST, -07:00)
 
@@ -24,22 +33,27 @@ function problem(changes: Partial<ApiProblem>): ApiProblem {
 
 function renderForm(props: Partial<Parameters<typeof TripForm>[0]> = {}) {
   const onSubmit = vi.fn()
+  const queryClient = new QueryClient()
+  const wrap = (children: ReactNode) => (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme={theme}>{children}</ThemeProvider>
+    </QueryClientProvider>
+  )
   const view = render(
-    <ThemeProvider theme={theme}>
-      <TripForm onSubmit={onSubmit} isSubmitting={false} problem={null} now={() => NOW} {...props} />
-    </ThemeProvider>,
+    wrap(<TripForm onSubmit={onSubmit} isSubmitting={false} problem={null} now={() => NOW} {...props} />),
   )
   const rerender = (next: Partial<Parameters<typeof TripForm>[0]>) =>
     view.rerender(
-      <ThemeProvider theme={theme}>
-        <TripForm onSubmit={onSubmit} isSubmitting={false} problem={null} now={() => NOW} {...props} {...next} />
-      </ThemeProvider>,
+      wrap(
+        <TripForm onSubmit={onSubmit} isSubmitting={false} problem={null} now={() => NOW} {...props} {...next} />,
+      ),
     )
   return { onSubmit, rerender, user: userEvent.setup() }
 }
 
-const origin = () => screen.getByRole('textbox', { name: /origin/i })
-const destination = () => screen.getByRole('textbox', { name: /destination/i })
+// The address inputs suggest places, so they are comboboxes.
+const origin = () => screen.getByRole('combobox', { name: /origin/i })
+const destination = () => screen.getByRole('combobox', { name: /destination/i })
 const departure = () => screen.getByLabelText(/departure date and time/i)
 const weight = () => screen.getByRole('textbox', { name: /cargo weight/i })
 const submit = () => screen.getByRole('button', { name: /analyze routes/i })
@@ -83,6 +97,86 @@ describe('submitting', () => {
       load_weight_lbs: 36000,
       checkpoint_interval_miles: 10,
     })
+  })
+
+  it('sends a chosen place suggestion as the address', async () => {
+    vi.mocked(suggestLocations).mockImplementation(async (query) =>
+      query.startsWith('Salt')
+        ? [{ label: 'Salt Lake City, UT, USA', latitude: 40.76, longitude: -111.89 }]
+        : [{ label: 'Denver, CO, USA', latitude: 39.74, longitude: -104.99 }],
+    )
+    const { onSubmit, user } = renderForm()
+    await user.type(origin(), 'Denv')
+    await user.click(await screen.findByRole('option', { name: /Denver/ }))
+    await user.type(destination(), 'Salt')
+    await screen.findByRole('option', { name: /Salt Lake City/ })
+    await user.keyboard('{ArrowDown}{Enter}')
+    await user.type(weight(), '36000')
+
+    await user.click(submit())
+
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        origin: 'Denver, CO, USA',
+        origin_coordinates: { latitude: 39.74, longitude: -104.99 },
+        destination: 'Salt Lake City, UT, USA',
+        destination_coordinates: { latitude: 40.76, longitude: -111.89 },
+      }),
+    )
+  })
+
+  it('forgets a chosen place once its address is edited', async () => {
+    vi.mocked(suggestLocations).mockResolvedValue([
+      { label: 'Denver, CO, USA', latitude: 39.74, longitude: -104.99 },
+    ])
+    const { onSubmit, user } = renderForm()
+    await user.type(origin(), 'Denv')
+    await user.click(await screen.findByRole('option', { name: /Denver/ }))
+    // Edit the chosen address, then type it back exactly: it is typed text now.
+    await user.type(origin(), '{Backspace}A')
+    await user.keyboard('{Escape}')
+    await user.type(destination(), 'Salt Lake City, UT')
+    await user.keyboard('{Escape}')
+    await user.type(weight(), '36000')
+
+    await user.click(submit())
+
+    const [request] = onSubmit.mock.calls[0]
+    expect(request.origin).toBe('Denver, CO, USA')
+    expect(request).not.toHaveProperty('origin_coordinates')
+    expect(request).not.toHaveProperty('destination_coordinates')
+  })
+
+  it('accepts an empty truck (0 lb)', async () => {
+    const { onSubmit, user } = renderForm()
+    await user.type(origin(), 'Denver, CO')
+    await user.type(destination(), 'Salt Lake City, UT')
+    await user.type(weight(), '0')
+
+    await user.click(submit())
+
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ load_weight_lbs: 0 }))
+  })
+
+  it('rejects a negative weight', async () => {
+    const { onSubmit, user } = renderForm()
+    await fillValidTrip(user)
+    await user.clear(weight())
+    await user.type(weight(), '-1')
+
+    await user.click(submit())
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Enter 0 or more pounds, for example 36000 or 36,000.')).toBeInTheDocument()
+  })
+
+  it('still submits with Enter when no suggestion is highlighted', async () => {
+    const { onSubmit, user } = renderForm()
+    await fillValidTrip(user)
+
+    await user.type(origin(), '{Enter}')
+
+    expect(onSubmit).toHaveBeenCalledOnce()
   })
 
   it('shows every validation error inline and focuses the first invalid field', async () => {
@@ -182,6 +276,31 @@ describe('backend problems', () => {
     expect(origin()).toHaveValue('Springfield, MO, USA')
     expect(origin()).toHaveFocus()
     expect(screen.queryByText('Did you mean:')).not.toBeInTheDocument()
+  })
+
+  it('sends a chosen candidate with its coordinates, so it cannot be ambiguous again', async () => {
+    const { onSubmit, user } = renderForm({
+      problem: problem({
+        code: 'GEOCODING_AMBIGUOUS',
+        ambiguity: {
+          field: 'origin',
+          candidates: [{ label: 'Springfield, MO, USA', latitude: 37.2, longitude: -93.3 }],
+        },
+      }),
+    })
+    await user.click(screen.getByRole('button', { name: 'Use Springfield, MO, USA as the origin' }))
+    await user.type(destination(), 'Salt Lake City, UT')
+    await user.keyboard('{Escape}')
+    await user.type(weight(), '36000')
+
+    await user.click(submit())
+
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        origin: 'Springfield, MO, USA',
+        origin_coordinates: { latitude: 37.2, longitude: -93.3 },
+      }),
+    )
   })
 
   it('tells the user when they can retry after a rate limit', () => {

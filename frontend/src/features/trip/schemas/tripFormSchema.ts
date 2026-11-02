@@ -3,6 +3,8 @@ import {
   CHECKPOINT_INTERVALS_MILES,
   DEFAULT_CHECKPOINT_INTERVAL_MILES,
   type CheckpointIntervalMiles,
+  type Coordinates,
+  type GeocodedLocation,
   type TripAnalysisRequest,
 } from '../../analysis/types/api'
 import {
@@ -19,6 +21,10 @@ export const MAX_ADDRESS_LENGTH = 200
 export interface TripFormValues {
   origin: string
   destination: string
+  /** The place chosen from the suggestions for each address, if any. Cleared when the address
+   * is edited, so typed text is always geocoded by the backend. */
+  originPlace: GeocodedLocation | null
+  destinationPlace: GeocodedLocation | null
   /** datetime-local value, in the browser's time zone. */
   departureLocal: string
   /** As typed; parsed on submit. */
@@ -32,6 +38,8 @@ export function initialTripFormValues(now: Date): TripFormValues {
   return {
     origin: '',
     destination: '',
+    originPlace: null,
+    destinationPlace: null,
     departureLocal: toLocalInputValue(nextWholeHour(now)),
     loadWeightLbs: '',
     checkpointIntervalMiles: DEFAULT_CHECKPOINT_INTERVAL_MILES,
@@ -50,13 +58,21 @@ function addressError(value: string, name: string): string | undefined {
 /** Digits, or digits grouped in threes with commas (36,000), with an optional decimal part. */
 const LOAD_WEIGHT = /^(\d+|\d{1,3}(,\d{3})+)(\.\d+)?$/
 
-/** A positive number of pounds. Commas are allowed only as correctly placed thousands
- * separators, so a mistyped value such as "3,6000" is rejected rather than reinterpreted. */
+/** A number of pounds, 0 (an empty truck) or more. Commas are allowed only as correctly placed
+ * thousands separators, so a mistyped value such as "3,6000" is rejected rather than
+ * reinterpreted. A minus sign is never accepted. */
 export function parseLoadWeight(value: string): number | null {
   const trimmed = value.trim()
   if (!LOAD_WEIGHT.test(trimmed)) return null
   const pounds = Number(trimmed.replace(/,/g, ''))
-  return Number.isFinite(pounds) && pounds > 0 ? pounds : null
+  return Number.isFinite(pounds) && pounds >= 0 ? pounds : null
+}
+
+/** The chosen place's coordinates, if it still matches what the address field says. */
+function chosenCoordinates(text: string, place: GeocodedLocation | null): Coordinates | undefined {
+  return place && place.label === text.trim()
+    ? { latitude: place.latitude, longitude: place.longitude }
+    : undefined
 }
 
 /** Validates the form the same way the backend does, and builds the request if valid. */
@@ -88,7 +104,7 @@ export function validateTripForm(
   if (!values.loadWeightLbs.trim()) {
     errors.load_weight_lbs = 'Enter the cargo weight in pounds.'
   } else if (loadWeight === null) {
-    errors.load_weight_lbs = 'Enter a positive number of pounds, for example 36000 or 36,000.'
+    errors.load_weight_lbs = 'Enter 0 or more pounds, for example 36000 or 36,000.'
   }
 
   if (!CHECKPOINT_INTERVALS_MILES.includes(values.checkpointIntervalMiles)) {
@@ -98,14 +114,16 @@ export function validateTripForm(
   if (Object.keys(errors).length || !departure || loadWeight === null) {
     return { errors, request: null }
   }
-  return {
-    errors,
-    request: {
-      origin: values.origin.trim(),
-      destination: values.destination.trim(),
-      departure_time: toOffsetIsoString(departure),
-      load_weight_lbs: loadWeight,
-      checkpoint_interval_miles: values.checkpointIntervalMiles,
-    },
+  const request: TripAnalysisRequest = {
+    origin: values.origin.trim(),
+    destination: values.destination.trim(),
+    departure_time: toOffsetIsoString(departure),
+    load_weight_lbs: loadWeight,
+    checkpoint_interval_miles: values.checkpointIntervalMiles,
   }
+  const originCoordinates = chosenCoordinates(values.origin, values.originPlace)
+  const destinationCoordinates = chosenCoordinates(values.destination, values.destinationPlace)
+  if (originCoordinates) request.origin_coordinates = originCoordinates
+  if (destinationCoordinates) request.destination_coordinates = destinationCoordinates
+  return { errors, request }
 }
