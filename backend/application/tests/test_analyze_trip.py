@@ -159,6 +159,47 @@ def test_services_are_called_in_order_with_each_others_results() -> None:
     assert {cp.route_id for cp in checkpoints} == {"route-1", "route-2"}
 
 
+def test_a_chosen_place_is_used_as_given_without_geocoding() -> None:
+    geocoder, router = FakeGeocoder(), FakeRouter()
+    chosen = Coordinate(39.7392, -104.9903)
+
+    analysis = use_case(geocoder, router).execute(
+        trip(origin="Denver, CO, USA", origin_coordinate=chosen)
+    )
+
+    # Only the typed destination is geocoded; origin and destination are independent.
+    assert geocoder.calls == [("Salt Lake City, UT", "destination")]
+    assert analysis.origin == Location("Denver, CO, USA", 39.7392, -104.9903)
+    assert router.calls == [(analysis.origin, SALT_LAKE_CITY)]
+
+
+def test_chosen_places_never_raise_ambiguity() -> None:
+    # Geocoding would fail as ambiguous, but both places were chosen from suggestions.
+    geocoder = FakeGeocoder(error=GeocodingAmbiguousError("origin", [DENVER, SALT_LAKE_CITY]))
+
+    analysis = use_case(geocoder).execute(
+        trip(
+            origin="Springfield, MO, USA",
+            origin_coordinate=Coordinate(37.197, -93.281),
+            destination="Salt Lake City, UT, USA",
+            destination_coordinate=Coordinate(40.773, -111.934),
+        )
+    )
+
+    assert geocoder.calls == []
+    assert analysis.origin.label == "Springfield, MO, USA"
+
+
+def test_an_empty_truck_is_analyzed() -> None:
+    weather = FakeWeather(
+        conditions=lambda cp: (50.0, 0.0, 0.0)
+    )  # SEVERE; NO_TRAVEL above 30,000 lb
+
+    analysis = use_case(weather=weather).execute(trip(load_weight_lbs=0.0))
+
+    assert analysis.routes[0].checkpoints[1].final_risk == RiskLevel.SEVERE
+
+
 def test_analysis_contains_every_route_in_provider_order() -> None:
     analysis = use_case().execute(trip())
 
