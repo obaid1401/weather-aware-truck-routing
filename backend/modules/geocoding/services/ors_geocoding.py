@@ -1,5 +1,5 @@
-"""OpenRouteService geocoding (Pelias `/geocode/search`) and place suggestions
-(`/geocode/autocomplete`)."""
+"""OpenRouteService geocoding (Pelias `/pelias/v1/search`) and place suggestions
+(`/pelias/v1/autocomplete`)."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -20,8 +20,10 @@ from shared.types import GeocodingAmbiguousError, GeocodingNotFoundError, Locati
 from shared.validation import finite_number
 
 PROVIDER = "OpenRouteService"
-SEARCH_URL = "https://api.openrouteservice.org/geocode/search"
-AUTOCOMPLETE_URL = "https://api.openrouteservice.org/geocode/autocomplete"
+PROVIDER = "OpenRouteService"
+
+SEARCH_URL = "https://api.heigit.org/pelias/v1/search"
+AUTOCOMPLETE_URL = "https://api.heigit.org/pelias/v1/autocomplete"
 RESULT_SIZE = 10
 # Suggestions shown while the user types an address.
 SUGGESTION_SIZE = 5

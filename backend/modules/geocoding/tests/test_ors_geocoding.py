@@ -69,7 +69,7 @@ def test_sends_query_with_key_in_header_not_url() -> None:
 
     (request,) = requests
     assert request.method == "GET"
-    assert request.url.path == "/geocode/search"
+    assert request.url.path == "/pelias/v1/search"
     assert request.url.params["text"] == "Denver, CO"
     assert request.headers["Authorization"] == API_KEY
     assert API_KEY not in str(request.url)
@@ -263,7 +263,7 @@ def test_missing_api_key_is_a_configuration_error() -> None:
         OrsGeocodingService(httpx.Client())
 
 
-# Suggestions while typing (/geocode/autocomplete)
+# Suggestions while typing (/pelias/v1/autocomplete)
 
 
 def suggestion(label: str, latitude: float, longitude: float) -> dict[str, Any]:
@@ -288,7 +288,7 @@ def test_suggest_calls_autocomplete_with_the_key_in_a_header() -> None:
 
     (request,) = requests
     assert request.method == "GET"
-    assert request.url.path == "/geocode/autocomplete"
+    assert request.url.path == "/pelias/v1/autocomplete"
     assert request.url.params["text"] == "Denv"
     assert request.url.params["size"] == "5"
     assert request.headers["Authorization"] == API_KEY

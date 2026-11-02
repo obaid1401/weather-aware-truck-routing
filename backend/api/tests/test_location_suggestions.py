@@ -11,7 +11,7 @@ URL = "/api/v1/locations/suggestions/"
 
 
 class FakeAutocomplete:
-    """Answers like ORS /geocode/autocomplete and records every request."""
+    """Answers like ORS /pelias/v1/autocomplete and records every request."""
 
     def __init__(self, response: httpx.Response | None = None) -> None:
         self.requests: list[httpx.Request] = []
