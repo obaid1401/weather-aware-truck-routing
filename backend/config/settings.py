@@ -131,8 +131,12 @@ def env_rate(name: str) -> str:
 # comes from the environment (.env); there is no built-in value.
 ANALYZE_RATE_LIMIT = env_rate("ANALYZE_RATE_LIMIT")
 
+# Place suggestions are requested while the user types (debounced by the frontend). Each one is
+# an OpenRouteService call on the same key as geocoding, so it is limited per client too.
+SUGGEST_RATE_LIMIT = env_rate("SUGGEST_RATE_LIMIT")
+
 REST_FRAMEWORK = {
-    "DEFAULT_THROTTLE_RATES": {"analyze": ANALYZE_RATE_LIMIT},
+    "DEFAULT_THROTTLE_RATES": {"analyze": ANALYZE_RATE_LIMIT, "suggest": SUGGEST_RATE_LIMIT},
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     "DEFAULT_AUTHENTICATION_CLASSES": [],

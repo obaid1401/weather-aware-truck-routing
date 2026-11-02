@@ -22,6 +22,7 @@ VALID = {
     "DJANGO_SECRET_KEY": "test-secret-key",
     "ORS_API_KEY": "test-ors-key",
     "ANALYZE_RATE_LIMIT": "10/minute",
+    "SUGGEST_RATE_LIMIT": "30/minute",
 }
 
 
@@ -155,3 +156,19 @@ def test_open_meteo_settings_are_read_from_the_environment() -> None:
     assert result.returncode == 0, result.stderr
     # Only the token's length is printed, so the test output never shows it.
     assert result.stdout.strip() == "https://weather-proxy.example.workers.dev|12"
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_missing_suggestion_rate_limit_fails_at_startup(value: str) -> None:
+    # Like ANALYZE_RATE_LIMIT, there is no built-in rate.
+    result = start_django(SUGGEST_RATE_LIMIT=value)
+
+    assert result.returncode != 0
+    assert "ImproperlyConfigured: SUGGEST_RATE_LIMIT is not set." in result.stderr
+
+
+def test_invalid_suggestion_rate_limit_fails_at_startup() -> None:
+    result = start_django(SUGGEST_RATE_LIMIT="thirty")
+
+    assert result.returncode != 0
+    assert "SUGGEST_RATE_LIMIT must be a rate such as 10/minute or 100/hour" in result.stderr

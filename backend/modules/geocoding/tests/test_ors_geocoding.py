@@ -261,3 +261,81 @@ def test_uses_the_shared_configured_client_by_default() -> None:
 def test_missing_api_key_is_a_configuration_error() -> None:
     with pytest.raises(ImproperlyConfigured):
         OrsGeocodingService(httpx.Client())
+
+
+# Suggestions while typing (/geocode/autocomplete)
+
+
+def suggestion(label: str, latitude: float, longitude: float) -> dict[str, Any]:
+    """An autocomplete feature: like a search result, but without a confidence score."""
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [longitude, latitude]},
+        "properties": {"label": label, "layer": "locality"},
+    }
+
+
+def test_suggest_calls_autocomplete_with_the_key_in_a_header() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200, json={"features": [suggestion("Denver, CO, USA", 39.74, -104.99)]}
+        )
+
+    service(handler).suggest("Denv")
+
+    (request,) = requests
+    assert request.method == "GET"
+    assert request.url.path == "/geocode/autocomplete"
+    assert request.url.params["text"] == "Denv"
+    assert request.url.params["size"] == "5"
+    assert request.headers["Authorization"] == API_KEY
+    assert API_KEY not in str(request.url)
+
+
+def test_suggest_returns_places_in_provider_order_without_repeated_labels() -> None:
+    places = service(
+        respond_with(
+            suggestion("Denver, CO, USA", 39.741, -104.986),
+            suggestion("Denver County, CO, USA", 39.762, -104.876),
+            suggestion("Denver, CO, USA", 39.7, -105.0),
+            suggestion("Denville, NJ, USA", 40.892, -74.477),
+        )
+    ).suggest("Denv")
+
+    assert places == [
+        Location("Denver, CO, USA", 39.741, -104.986),
+        Location("Denver County, CO, USA", 39.762, -104.876),
+        Location("Denville, NJ, USA", 40.892, -74.477),
+    ]
+
+
+def test_suggest_returns_at_most_five_places() -> None:
+    features = [suggestion(f"Place {n}, USA", 40.0, -100.0 - n) for n in range(8)]
+
+    assert len(service(respond_with(*features)).suggest("Place")) == 5
+
+
+def test_suggest_returns_an_empty_list_when_nothing_matches() -> None:
+    assert service(respond_with()).suggest("Qzxw") == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"features": "nope"},
+        {"features": [{"properties": {"label": ""}, "geometry": {"coordinates": [1, 2]}}]},
+        {"features": [{"properties": {"label": "X"}, "geometry": {"coordinates": [999, 2]}}]},
+        {},
+    ],
+)
+def test_malformed_suggestions_raise_provider_error(body: dict[str, Any]) -> None:
+    with pytest.raises(ProviderError):
+        service(lambda request: httpx.Response(200, json=body)).suggest("Denv")
+
+
+def test_suggestion_rate_limit_raises_provider_rate_limit() -> None:
+    with pytest.raises(ProviderRateLimitError):
+        service(lambda request: httpx.Response(429)).suggest("Denv")

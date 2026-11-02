@@ -1,4 +1,5 @@
-"""OpenRouteService geocoding (Pelias `/geocode/search`)."""
+"""OpenRouteService geocoding (Pelias `/geocode/search`) and place suggestions
+(`/geocode/autocomplete`)."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -20,7 +21,10 @@ from shared.validation import finite_number
 
 PROVIDER = "OpenRouteService"
 SEARCH_URL = "https://api.openrouteservice.org/geocode/search"
+AUTOCOMPLETE_URL = "https://api.openrouteservice.org/geocode/autocomplete"
 RESULT_SIZE = 10
+# Suggestions shown while the user types an address.
+SUGGESTION_SIZE = 5
 MAX_AMBIGUOUS_CANDIDATES = 5
 
 # Approved ambiguity rule (docs/requirements.md FR-03). A result is plausible when its
@@ -61,27 +65,57 @@ class OrsGeocodingService:
             raise GeocodingNotFoundError(field)
         return _resolve(candidates, field)
 
+    def suggest(self, query: str) -> list[Location]:
+        """Up to SUGGESTION_SIZE places matching partly typed `query`, in provider order, with
+        repeated labels removed. An empty list when nothing matches."""
+        response = send_request(
+            self._client,
+            PROVIDER,
+            "GET",
+            AUTOCOMPLETE_URL,
+            params={"text": query, "size": SUGGESTION_SIZE},
+            headers={"Authorization": self._api_key},
+        )
+        raise_for_status(response, PROVIDER)
+        try:
+            features = _features(parse_json(response, PROVIDER))
+            locations = [_location(feature) for feature in features]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise invalid_response_error(PROVIDER, f"malformed suggestion: {exc}") from exc
+
+        unique: dict[str, Location] = {}
+        for location in locations:
+            unique.setdefault(location.label, location)
+        return list(unique.values())[:SUGGESTION_SIZE]
+
 
 def _parse_candidates(data: Any) -> list[_Candidate]:
     try:
-        features = data["features"]
-        if not isinstance(features, list):
-            raise TypeError("features is not a list")
-        candidates = []
-        for feature in features:
-            label = feature["properties"]["label"]
-            if not isinstance(label, str) or not label.strip():
-                raise ValueError(f"invalid label {label!r}")
-            coordinate = coordinate_from_lon_lat(feature["geometry"]["coordinates"])
-            candidates.append(
-                _Candidate(
-                    location=Location(label, coordinate.latitude, coordinate.longitude),
-                    confidence=finite_number(feature["properties"]["confidence"]),
-                )
+        return [
+            _Candidate(
+                location=_location(feature),
+                confidence=finite_number(feature["properties"]["confidence"]),
             )
-        return candidates
+            for feature in _features(data)
+        ]
     except (KeyError, TypeError, ValueError) as exc:
         raise invalid_response_error(PROVIDER, f"malformed geocoding result: {exc}") from exc
+
+
+def _features(data: Any) -> list[Any]:
+    features = data["features"]
+    if not isinstance(features, list):
+        raise TypeError("features is not a list")
+    return features
+
+
+def _location(feature: Any) -> Location:
+    """The labelled location of one GeoJSON feature (search and autocomplete results)."""
+    label = feature["properties"]["label"]
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError(f"invalid label {label!r}")
+    coordinate = coordinate_from_lon_lat(feature["geometry"]["coordinates"])
+    return Location(label, coordinate.latitude, coordinate.longitude)
 
 
 def _resolve(candidates: list[_Candidate], field: str) -> Location:
