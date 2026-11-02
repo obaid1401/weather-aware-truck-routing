@@ -4,7 +4,7 @@ A web application that helps truck drivers and dispatchers compare heavy-vehicle
 
 Given an origin, destination, departure time, and cargo weight, the application:
 
-1. Geocodes the addresses with OpenRouteService and retrieves up to three genuine truck routes from Valhalla (`truck` costing).
+1. Suggests places while the user types each address, then geocodes the addresses with OpenRouteService (a place chosen from the suggestions is used as given) and retrieves up to three genuine truck routes from Valhalla (`truck` costing).
 2. Places weather checkpoints along each route at 10, 25, or 50-mile intervals.
 3. Estimates when the truck reaches each checkpoint and matches it to an Open-Meteo hourly forecast.
 4. Rates wind, rain, and snow risk at each checkpoint, including cargo-weight rules for high wind.
@@ -24,7 +24,7 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 - **Phase 7 (Backend Integration):** done. `POST /api/v1/routes/analyze/` runs the full analysis in one request and returns routes, checkpoints, weather, risks, metrics, and the recommendation.
 - **Phase 8 (Frontend Foundation):** done. Trip form with validation, loading and error states, connected to the analysis API, with a summary of the recommendation and warnings.
 - **Phase 9 (Results and Visualization):** done. Route comparison in ranked order, an interactive map with every route, risk-coloured checkpoints, checkpoint details, a 0–48-hour forecast slider, and a weather heatmap along the selected route, with a legend that labels every risk level.
-- **Next:** Phase 10 (Testing and Delivery).
+- **Phase 10 (Testing and Delivery):** in progress. Deployed on Render (backend Docker service and frontend static site) with a Cloudflare Worker proxying Open-Meteo; see [`docs/deployment.md`](docs/deployment.md). Since Phase 9: place suggestions while typing addresses, chosen places used without re-geocoding, and 0 lb (empty truck) accepted as a cargo weight.
 
 ## Documentation
 
@@ -32,18 +32,22 @@ Implementation follows the phases in [`docs/CLAUDE.md`](docs/CLAUDE.md).
 |---|---|
 | [`docs/requirements.md`](docs/requirements.md) | What the application must do: business rules, risk thresholds, ranking order, API contract |
 | [`docs/architecture.md`](docs/architecture.md) | How it is built: modules, data structures, API design, testing strategy |
+| [`docs/deployment.md`](docs/deployment.md) | How the backend, frontend, and weather proxy are deployed and configured |
 | [`docs/CLAUDE.md`](docs/CLAUDE.md) | Implementation rules and phase plan |
+| [`frontend/README.md`](frontend/README.md) | Frontend setup, structure, and design |
+| [`cloudflare/open-meteo-proxy/README.md`](cloudflare/open-meteo-proxy/README.md) | The Open-Meteo proxy Worker: security rules, tests, and deployment |
 
 ## Technology Stack
 
 | Area | Technology |
 |---|---|
 | Frontend | React, TypeScript, Vite, Material UI, React Leaflet, TanStack Query, Axios |
-| Backend | Python 3.12, Django, Django REST Framework, HTTPX, drf-spectacular |
-| Geocoding | OpenRouteService |
+| Backend | Python 3.12, Django, Django REST Framework, HTTPX, drf-spectacular, Gunicorn |
+| Geocoding and address suggestions | OpenRouteService |
 | Truck routing | Valhalla |
-| Weather | Open-Meteo |
+| Weather | Open-Meteo, through a Cloudflare Worker proxy in deployment |
 | Map tiles | OpenStreetMap |
+| Hosting | Render (Docker web service and static site), Cloudflare Workers |
 | Backend testing | Pytest, pytest-django |
 | Frontend testing | Vitest, React Testing Library |
 
@@ -55,7 +59,8 @@ The application is a stateless modular monolith: one Django backend, one React f
 weather-aware-truck-routing/
 ├── backend/     Django REST API (modules: geocoding, routing, checkpoints, weather, risk, recommendation)
 ├── frontend/    React + TypeScript + Vite client
-├── docs/        Requirements, architecture, and implementation instructions
+├── cloudflare/  open-meteo-proxy: Cloudflare Worker that forwards weather requests in deployment
+├── docs/        Requirements, architecture, deployment, and implementation instructions
 └── .github/     CI workflow
 ```
 
@@ -87,6 +92,7 @@ The backend runs at `http://127.0.0.1:8000/`.
 | URL | Purpose |
 |---|---|
 | `/api/v1/routes/analyze/` | Trip analysis (`POST`) |
+| `/api/v1/locations/suggestions/?q=…` | Place suggestions while typing an address (`GET`, at least 3 characters) |
 | `/api/health/` | Health check |
 | `/api/docs/` | Swagger UI |
 | `/api/schema/` | OpenAPI schema |
@@ -149,6 +155,7 @@ Backend (`backend/.env`):
 | `OPEN_METEO_BASE_URL` | Optional. Where weather forecasts are requested; defaults to the public `https://api.open-meteo.com`. Set it to an https proxy (for example a Cloudflare Worker) in deployment; leave it unset locally |
 | `OPEN_METEO_PROXY_TOKEN` | Optional secret for that proxy, sent only to it in the `X-Proxy-Token` header. Analyses fail with a configuration error (logged by the backend) if it is set while `OPEN_METEO_BASE_URL` points to Open-Meteo itself, or to a non-https proxy other than `localhost` |
 | `ANALYZE_RATE_LIMIT` | **Required.** Analysis requests allowed per client, such as `10/minute`; startup fails if missing or invalid. Excess requests get HTTP 429 |
+| `SUGGEST_RATE_LIMIT` | **Required.** Place-suggestion requests allowed per client while typing, such as `30/minute`; startup fails if missing or invalid. Each one is an OpenRouteService call |
 
 Frontend (`frontend/.env`): `VITE_API_BASE_URL` is **required**, the backend URL, for example `http://127.0.0.1:8000`. See `frontend/.env.example`.
 
@@ -167,42 +174,18 @@ Tests never call live external APIs.
 
 Frontend, from `frontend/`: `npm test` (Vitest and React Testing Library), `npm run lint`, and `npm run build`.
 
+Weather proxy Worker, from `cloudflare/open-meteo-proxy/`: `npm test` (Node.js built-in test runner, no dependencies).
+
 CI runs Ruff, `manage.py check`, and Pytest for the backend, and ESLint, the Vitest tests, and a production build for the frontend, on pushes and pull requests to `main`.
 
 ## Deployment
 
-The frontend and backend are deployed separately on free-tier hosting. Frontend deployment instructions will be added in Phase 10.
-
-### Backend on Render (Docker)
-
-Create a Render **Web Service** from this repository with:
-
-| Setting | Value |
-|---|---|
-| Language / Runtime | Docker |
-| Root Directory | `backend` |
-| Dockerfile Path | `./Dockerfile` |
-| Health Check Path | `/api/health/` |
-
-Environment variables (set in the Render dashboard, never in the repository):
-
-| Variable | Value |
-|---|---|
-| `DJANGO_SECRET_KEY` | A new random key (see `backend/.env.example`) |
-| `DJANGO_DEBUG` | `False` |
-| `DJANGO_ALLOWED_HOSTS` | The service host name, for example `your-service.onrender.com` |
-| `CORS_ALLOWED_ORIGINS` | The deployed frontend origin, for example `https://your-frontend.example` |
-| `ORS_API_KEY` | Your OpenRouteService key |
-| `ANALYZE_RATE_LIMIT` | For example `10/minute` |
-| `VALHALLA_BASE_URL` | Optional; defaults to the public FOSSGIS server |
-| `OPEN_METEO_BASE_URL` | Optional; the weather proxy's https URL if one is used (defaults to the public Open-Meteo API) |
-| `OPEN_METEO_PROXY_TOKEN` | Optional; the proxy's secret, set only together with `OPEN_METEO_BASE_URL` |
-
-Render sets `PORT` itself and terminates HTTPS in front of the container. Free instances sleep when idle, so the first request after a pause is slow while the service starts.
+The backend runs as a Docker web service and the frontend as a static site on Render, and a Cloudflare Worker forwards weather requests to Open-Meteo. All three use free tiers. [`docs/deployment.md`](docs/deployment.md) covers the service settings, every environment variable, the deployment order, and troubleshooting.
 
 ## External Service Terms
 
-- **OpenRouteService:** free tier with daily and per-minute request limits. Used for geocoding only.
+- **OpenRouteService:** free tier with daily and per-minute request limits. Used for geocoding and address suggestions only.
 - **Valhalla (FOSSGIS public server):** free, no API key, fair-use policy. Truck routes are limited to 1,500 km; longer trips are rejected.
-- **Open-Meteo:** the free API is for non-commercial use.
+- **Open-Meteo:** the free API is for non-commercial use. Its limits are per IP address, so the deployed backend reaches it through the Cloudflare Worker.
+- **Cloudflare Workers:** free plan with a daily request allowance. Hosts the Open-Meteo proxy only.
 - **OpenStreetMap:** tiles are used under the OSM tile usage policy, with attribution shown on the map.

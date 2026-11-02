@@ -119,7 +119,7 @@ Validation:
 - Origin and destination are required.
 - Departure time must be valid and timezone-aware.
 - Departure time must not be in the past. Reject past departure times with a validation error.
-- Cargo weight must be a positive number.
+- Cargo weight must be a number of pounds, 0 (an empty truck) or more. Negative and non-numeric values are rejected.
 - Checkpoint interval must be 10, 25, or 50 miles. If omitted, use 25 miles.
 - Prevent duplicate submissions while analysis is running.
 - Preserve form values if a request fails.
@@ -469,6 +469,8 @@ Example request:
 ```
 
 `checkpoint_interval_miles` is optional and defaults to 25.
+
+`origin_coordinates` and `destination_coordinates` are optional, each `{"latitude": …, "longitude": …}`. The frontend sends one only when the user chose that address from the place suggestions; the backend then uses the coordinates (with the address as its label) instead of geocoding the text. Typed addresses are geocoded as before, so ambiguity is still reported for them.
 
 Health endpoint: `GET /api/health/`
 
